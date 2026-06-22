@@ -1,31 +1,39 @@
-# Frontend (대협 담당)
+# LocalPick Frontend
 
-React.js (웹) / React Native (앱)
+React Native + Expo 앱입니다.
 
-## 폴더 구조 (예정)
-
-```
-frontend/
-├── web/           # React.js 웹 버전
-├── app/           # React Native 앱 버전
-└── shared/        # 웹·앱 공유 컴포넌트, 타입, 유틸
-```
-
-## 시작하기
+## 실행
 
 ```bash
-# 웹
-cd web && npm install && npm start
-
-# 앱
-cd app && npm install && npx react-native run-android
+npm install
+npm run start
 ```
 
-## 담당 기능
+## 주요 구조
 
-- [ ] 카카오 로그인 연동
-- [ ] 거주 지역 등록 화면
-- [ ] 지역 소통방 (게시물 피드, 업로드, 좋아요·댓글·공유)
-- [ ] 지도 페이지 (채택 명소 마커, 세대 필터, 대안 추천)
-- [ ] 로컬패스 표시 및 사용 UI
-- [ ] 이 주의 발굴 지역 배너 (메인 화면)
+```text
+frontend/
+├── App.js
+├── src/
+│   ├── screens/              # 메인, 소통방, 지도, 내 로컬패스
+│   ├── components/           # 공통 컴포넌트
+│   ├── navigation/           # 하단 탭바 라우팅
+│   ├── api/                  # 외부 API 호출
+│   ├── hooks/                # 커스텀 훅
+│   └── constants/            # 디자인 토큰
+└── assets/
+```
+
+## 카카오 설정
+
+`app.json`의 `expo.extra.kakao` 값을 채운 뒤 실행합니다.
+
+```json
+{
+  "restApiKey": "카카오 REST API 키",
+  "javascriptKey": "카카오 JavaScript 키",
+  "redirectUri": "localpick://auth/kakao"
+}
+```
+
+카카오맵은 현재 Expo Go에서도 확인하기 쉬운 WebView 기반 구조로 준비되어 있습니다.
