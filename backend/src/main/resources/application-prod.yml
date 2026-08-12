@@ -1,0 +1,14 @@
+# Render 배포용 프로파일.
+# DATABASE_URL, KTO_SERVICE_KEY, MOIS_SERVICE_KEY 는 Render 환경변수로 주입한다.
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+logging:
+  level:
+    root: info
