@@ -17,7 +17,13 @@ management:
 
 localpick:
   kto:
-    base-url: https://apis.data.go.kr/B551011
+    # 관광빅데이터 정보서비스 — 방문자수 (40%)
+    base-url: https://apis.data.go.kr/B551011/DataLabService
+    # 지역별 관광 수요 강도 — 체류/소비 (35%)
+    demand-base-url: https://apis.data.go.kr/B551011/AreaTarDemDsService
+    # 지역별 관광 다양성 — 연령/소비 (25%)
+    diversity-base-url: https://apis.data.go.kr/B551011/AreaTarDivService
+    mobile-app: LocalPick
     service-key: ${KTO_SERVICE_KEY:}
   mois:
     service-key: ${MOIS_SERVICE_KEY:}
