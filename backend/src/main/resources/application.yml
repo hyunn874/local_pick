@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: localpick
+  profiles:
+    default: local
+  jackson:
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+localpick:
+  kto:
+    base-url: https://apis.data.go.kr/B551011
+    service-key: ${KTO_SERVICE_KEY:}
+  mois:
+    service-key: ${MOIS_SERVICE_KEY:}

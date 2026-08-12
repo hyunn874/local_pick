@@ -1,0 +1,32 @@
+# ============================================================
+# 이 파일을 application-local.yml 로 복사해서 실제 값을 채우세요.
+#   cp application-local.yml.example application-local.yml
+#
+# application-local.yml 은 .gitignore 에 등록되어 있습니다.
+# 공사 인증키를 절대 커밋하지 마세요.
+# ============================================================
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/localpick
+    username: apple          # 맥 계정명 (psql \du 로 확인)
+    password:                # 로컬은 보통 비어 있음
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update       # 1~2주차 한정. 시드 데이터 넣기 전 validate 로 전환할 것
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100
+    open-in-view: false
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace
+
+localpick:
+  kto:
+    service-key: 공사_인증키_디코딩값
+  mois:
+    service-key: 행안부_인증키
