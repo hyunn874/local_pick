@@ -17,7 +17,8 @@ management:
 
 localpick:
   kto:
-    base-url: https://apis.data.go.kr/B551011
+    base-url: https://apis.data.go.kr/B551011/DataLabService
+    mobile-app: LocalPick
     service-key: ${KTO_SERVICE_KEY:}
   mois:
     service-key: ${MOIS_SERVICE_KEY:}
