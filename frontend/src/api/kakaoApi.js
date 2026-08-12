@@ -1,6 +1,23 @@
-import { kakaoConfig } from './kakaoConfig';
+import {
+  login as kakaoSdkLogin,
+  logout as kakaoSdkLogout,
+} from '@react-native-seoul/kakao-login';
+import { NativeModules } from 'react-native';
+
+import { signInWithKakao, signOutFromKakao } from './kakaoAuthApi';
 
 const KAKAO_REVERSE_GEOCODING_URL = 'https://dapi.kakao.com/v2/local/geo/coord2regioncode.json';
+
+const kakaoNativeAppKey = process.env.EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY || '';
+const kakaoRestApiKey = process.env.EXPO_PUBLIC_KAKAO_REST_API_KEY || '';
+
+function hasNativeKakaoLoginModule() {
+  return Boolean(NativeModules.RNKakaoLogins?.login);
+}
+
+function isMissingNativeKakaoModuleError(error) {
+  return String(error?.message || error).includes("Cannot read property 'login' of null");
+}
 
 function assertValidCoordinate(latitude, longitude) {
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
@@ -20,10 +37,44 @@ function formatAdministrativeRegion(document) {
   return `${document.region_1depth_name} ${document.region_2depth_name}`;
 }
 
-export async function getAdministrativeRegionByCoords(latitude, longitude) {
+export async function kakaoLogin() {
+  try {
+    if (!hasNativeKakaoLoginModule()) {
+      return await signInWithKakao();
+    }
+
+    if (!kakaoNativeAppKey) {
+      throw new Error('EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY is not configured.');
+    }
+
+    return await kakaoSdkLogin();
+  } catch (error) {
+    if (isMissingNativeKakaoModuleError(error)) {
+      return await signInWithKakao();
+    }
+
+    console.error('Kakao login failed.', error);
+    throw error;
+  }
+}
+
+export async function kakaoLogout() {
+  try {
+    if (!hasNativeKakaoLoginModule()) {
+      return await signOutFromKakao();
+    }
+
+    return await kakaoSdkLogout();
+  } catch (error) {
+    console.error('Kakao logout failed.', error);
+    throw error;
+  }
+}
+
+export async function getReverseGeocoding(latitude, longitude) {
   assertValidCoordinate(latitude, longitude);
 
-  if (!kakaoConfig.restApiKey) {
+  if (!kakaoRestApiKey) {
     throw new Error('EXPO_PUBLIC_KAKAO_REST_API_KEY is not configured.');
   }
 
@@ -34,7 +85,7 @@ export async function getAdministrativeRegionByCoords(latitude, longitude) {
 
   const response = await fetch(`${KAKAO_REVERSE_GEOCODING_URL}?${query.toString()}`, {
     headers: {
-      Authorization: `KakaoAK ${kakaoConfig.restApiKey}`,
+      Authorization: `KakaoAK ${kakaoRestApiKey}`,
     },
   });
 
@@ -50,4 +101,5 @@ export async function getAdministrativeRegionByCoords(latitude, longitude) {
   return formatAdministrativeRegion(administrativeRegion);
 }
 
-export const reverseGeocodeToRegion = getAdministrativeRegionByCoords;
+export const getAdministrativeRegionByCoords = getReverseGeocoding;
+export const reverseGeocodeToRegion = getReverseGeocoding;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useRegions } from '../hooks/useRegions';
 import {
   Alert,
   ScrollView,
@@ -9,7 +10,13 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+
+import RegionSelector from '../components/RegionSelector';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -84,7 +91,11 @@ function GenerationFilter({ label, selectedFilter, onPress }) {
       activeOpacity={0.7}
       onPress={onPress}
     >
-      <Text style={[styles.filterText, isSelected && styles.selectedFilterText]}>{label}</Text>
+      <Text
+        style={[styles.filterText, isSelected && styles.selectedFilterText]}
+      >
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -106,7 +117,11 @@ function MapPin({ pin, onPress }) {
 
 function RecommendationCard({ place, onPress, onAlternativePress }) {
   return (
-    <TouchableOpacity style={styles.recommendationCard} activeOpacity={0.7} onPress={onPress}>
+    <TouchableOpacity
+      style={styles.recommendationCard}
+      activeOpacity={0.7}
+      onPress={onPress}
+    >
       <View style={styles.cardTopRow}>
         <View style={styles.adoptedBadge}>
           <Text style={styles.adoptedBadgeText}>채택</Text>
@@ -141,7 +156,11 @@ function PlaceBottomSheet({ place, animatedStyle, onClose }) {
       <View style={styles.sheetHandle} />
       <View style={styles.sheetHeader}>
         <Text style={styles.sheetTitle}>{place.name}</Text>
-        <TouchableOpacity style={styles.sheetCloseButton} activeOpacity={0.7} onPress={onClose}>
+        <TouchableOpacity
+          style={styles.sheetCloseButton}
+          activeOpacity={0.7}
+          onPress={onClose}
+        >
           <Text style={styles.sheetCloseText}>×</Text>
         </TouchableOpacity>
       </View>
@@ -157,14 +176,18 @@ function PlaceBottomSheet({ place, animatedStyle, onClose }) {
         <TouchableOpacity
           style={styles.sheetPrimaryButton}
           activeOpacity={0.7}
-          onPress={() => Alert.alert('소통방', '소통방 상세 연결은 준비 중이에요!')}
+          onPress={() =>
+            Alert.alert('소통방', '소통방 상세 연결은 준비 중이에요!')
+          }
         >
           <Text style={styles.sheetPrimaryButtonText}>소통방에서 보기</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.sheetSecondaryButton}
           activeOpacity={0.7}
-          onPress={() => Alert.alert('로컬패스', '로컬패스 사용은 준비 중이에요!')}
+          onPress={() =>
+            Alert.alert('로컬패스', '로컬패스 사용은 준비 중이에요!')
+          }
         >
           <Text style={styles.sheetSecondaryButtonText}>로컬패스 사용하기</Text>
         </TouchableOpacity>
@@ -178,13 +201,16 @@ export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
   const [selectedPin, setSelectedPin] = useState(null);
+  const [selectedRegion, setSelectedRegion] = useState(null);
+  const { regions, sidoList, isLoading, error } = useRegions();
 
   const normalizedSearchText = searchText.trim().toLowerCase();
 
   const filteredPins = useMemo(
     () =>
       mapPins.filter((pin) => {
-        const matchesFilter = selectedFilter === '전체' || pin.generation === selectedFilter;
+        const matchesFilter =
+          selectedFilter === '전체' || pin.generation === selectedFilter;
         const matchesSearch =
           !normalizedSearchText ||
           pin.name.toLowerCase().includes(normalizedSearchText) ||
@@ -192,13 +218,14 @@ export default function MapScreen() {
 
         return matchesFilter && matchesSearch;
       }),
-    [normalizedSearchText, selectedFilter],
+    [normalizedSearchText, selectedFilter]
   );
 
   const filteredRecommendations = useMemo(
     () =>
       recommendedPlaces.filter((place) => {
-        const matchesFilter = selectedFilter === '전체' || place.generation === selectedFilter;
+        const matchesFilter =
+          selectedFilter === '전체' || place.generation === selectedFilter;
         const matchesSearch =
           !normalizedSearchText ||
           place.title.toLowerCase().includes(normalizedSearchText) ||
@@ -206,10 +233,11 @@ export default function MapScreen() {
 
         return matchesFilter && matchesSearch;
       }),
-    [normalizedSearchText, selectedFilter],
+    [normalizedSearchText, selectedFilter]
   );
 
-  const hasSearchResults = filteredPins.length > 0 || filteredRecommendations.length > 0;
+  const hasSearchResults =
+    filteredPins.length > 0 || filteredRecommendations.length > 0;
 
   useEffect(() => {
     if (!selectedPin) {
@@ -278,6 +306,11 @@ export default function MapScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          <RegionSelector
+            selectedRegion={selectedRegion}
+            onSelectRegion={setSelectedRegion}
+          />
         </View>
 
         <View style={styles.filterRow}>
@@ -295,10 +328,20 @@ export default function MapScreen() {
       <View style={styles.mapArea}>
         <View style={styles.mapGridLineHorizontal} />
         <View style={styles.mapGridLineVertical} />
-        <Text style={styles.mapPlaceholderText}>카카오맵 영역</Text>
+        <Text style={styles.mapPlaceholderText}>
+          {isLoading
+            ? '불러오는 중…'
+            : error
+              ? `오류: ${error}`
+              : `백엔드 지역 ${regions.length}개`}
+        </Text>
         {hasSearchResults ? (
           filteredPins.map((pin) => (
-            <MapPin key={pin.id} pin={pin} onPress={() => handleSelectPin(pin)} />
+            <MapPin
+              key={pin.id}
+              pin={pin}
+              onPress={() => handleSelectPin(pin)}
+            />
           ))
         ) : (
           <View style={styles.noSearchResults}>
@@ -331,7 +374,9 @@ export default function MapScreen() {
             ))
           ) : (
             <View style={styles.emptyRecommendationCard}>
-              <Text style={styles.emptyRecommendationText}>검색 결과가 없어요</Text>
+              <Text style={styles.emptyRecommendationText}>
+                검색 결과가 없어요
+              </Text>
             </View>
           )}
         </ScrollView>

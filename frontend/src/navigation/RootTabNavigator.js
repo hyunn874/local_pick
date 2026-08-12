@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -6,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ChatRoomScreen from '../screens/ChatRoomScreen';
 import HotLocalScreen from '../screens/HotLocalScreen';
 import LocalPassScreen from '../screens/LocalPassScreen';
+import LoginScreen from '../screens/LoginScreen';
 import MainScreen from '../screens/MainScreen';
 import MapScreen from '../screens/MapScreen';
 
@@ -96,6 +98,12 @@ function LocalPickTabBar({ state, descriptors, navigation }) {
 }
 
 export default function RootTabNavigator() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  if (!isLoggedIn) {
+    return <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />;
+  }
+
   return (
     <Tab.Navigator
       tabBar={(props) => <LocalPickTabBar {...props} />}
