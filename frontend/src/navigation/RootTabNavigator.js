@@ -4,6 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ChatRoomScreen from '../screens/ChatRoomScreen';
+import DevScreen from '../screens/dev/DevScreen';
 import HotLocalScreen from '../screens/HotLocalScreen';
 import LocalPassScreen from '../screens/LocalPassScreen';
 import MainScreen from '../screens/MainScreen';
@@ -12,7 +13,13 @@ import MapScreen from '../screens/MapScreen';
 const Tab = createBottomTabNavigator();
 const MAIN_GREEN = '#2D5C44';
 const TEXT_MUTED = '#999999';
-const VISIBLE_TAB_NAMES = ['Main', 'Map', 'ChatRoom', 'LocalPass'];
+
+/** 개발 확인용 탭. 배포 전 false 로 바꾼다. */
+const SHOW_DEV_TAB = true;
+
+const VISIBLE_TAB_NAMES = SHOW_DEV_TAB
+  ? ['Main', 'Map', 'ChatRoom', 'LocalPass', 'Dev']
+  : ['Main', 'Map', 'ChatRoom', 'LocalPass'];
 
 const tabIcons = {
   Main: {
@@ -30,6 +37,10 @@ const tabIcons = {
   LocalPass: {
     active: 'ticket',
     inactive: 'ticket-outline',
+  },
+  Dev: {
+    active: 'construct',
+    inactive: 'construct-outline',
   },
 };
 
@@ -108,6 +119,9 @@ export default function RootTabNavigator() {
       <Tab.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
       <Tab.Screen name="ChatRoom" component={ChatRoomScreen} options={{ title: '소통방' }} />
       <Tab.Screen name="LocalPass" component={LocalPassScreen} options={{ title: '내 로컬패스' }} />
+      {SHOW_DEV_TAB ? (
+        <Tab.Screen name="Dev" component={DevScreen} options={{ title: '개발' }} />
+      ) : null}
       <Tab.Screen
         name="HotLocalScreen"
         component={HotLocalScreen}
