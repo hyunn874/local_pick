@@ -5,17 +5,12 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * 공사 빅데이터 API 공통 응답 구조.
+ * 공사 API 공통 응답 구조.
  *
- * {
- *   "response": {
- *     "header": { "resultCode": "0000", "resultMsg": "OK" },
- *     "body": {
- *       "items": { "item": [ ... ] },
- *       "numOfRows": 5, "pageNo": 1, "totalCount": 772
- *     }
- *   }
- * }
+ * 주의: 결과가 0건이면 items 가 객체가 아니라 빈 문자열로 내려온다.
+ *   정상: "items": { "item": [ ... ] }
+ *   0건 : "items": ""
+ * 이 보정은 KtoResponseParser 에서 처리한다.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record KtoApiResponse<T>(
@@ -66,5 +61,9 @@ public record KtoApiResponse<T>(
         return response != null && response.body() != null && response.body().totalCount() != null
                 ? response.body().totalCount()
                 : 0;
+    }
+
+    public boolean isEmpty() {
+        return items().isEmpty();
     }
 }

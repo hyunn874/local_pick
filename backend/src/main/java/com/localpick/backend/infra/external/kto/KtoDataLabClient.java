@@ -1,7 +1,6 @@
 package com.localpick.backend.infra.external.kto;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
 import com.localpick.backend.infra.external.PublicApiClient;
@@ -17,11 +16,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 한국관광공사 관광빅데이터 정보서비스 클라이언트.
+ * 한국관광공사 관광빅데이터 정보서비스 클라이언트 (방문자수).
  *
  * 오퍼레이션
- *  - locgoRegnVisitrDDList : 기초 지자체(시군구) 지역방문자수  ← 로컬픽에서 사용
- *  - metcoRegnVisitrDDList : 광역 지자체(시도) 지역방문자수
+ *  - locgoRegnVisitrDDList : 기초 지자체(시군구)  ← 로컬픽에서 사용
+ *  - metcoRegnVisitrDDList : 광역 지자체(시도)
  */
 @Slf4j
 @Component
@@ -30,13 +29,11 @@ public class KtoDataLabClient {
 
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final String OP_LOCAL_VISITOR = "/locgoRegnVisitrDDList";
-
-    /** 한 번에 가져올 최대 건수. 하루치 전국이 약 772건이라 여유를 둔다. */
     private static final int PAGE_SIZE = 1000;
     private static final int MAX_PAGES = 20;
 
     private final PublicApiClient publicApiClient;
-    private final ObjectMapper objectMapper;
+    private final KtoResponseParser parser;
 
     @Value("${localpick.kto.base-url}")
     private String baseUrl;
@@ -44,10 +41,6 @@ public class KtoDataLabClient {
     @Value("${localpick.kto.mobile-app:LocalPick}")
     private String mobileApp;
 
-    /**
-     * 지정한 날짜의 전국 시군구 방문자수를 모두 가져온다.
-     * 페이지를 끝까지 순회한다.
-     */
     public List<RegionVisitorItem> fetchDailyVisitors(LocalDate date) {
         return fetchVisitors(date, date);
     }
@@ -93,13 +86,6 @@ public class KtoDataLabClient {
         params.put("_type", "json");
 
         String body = publicApiClient.callKto(baseUrl + OP_LOCAL_VISITOR, params);
-
-        try {
-            return objectMapper.readValue(body, new TypeReference<>() {});
-        } catch (Exception e) {
-            log.error("[KTO] 응답 파싱 실패. 본문 앞부분: {}",
-                    body == null ? "null" : body.substring(0, Math.min(300, body.length())));
-            throw new BusinessException(ErrorCode.EXTERNAL_API_ERROR);
-        }
+        return parser.parse(body, new TypeReference<>() {});
     }
 }
