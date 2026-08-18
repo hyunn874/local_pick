@@ -1,33 +1,31 @@
-import { Platform } from 'react-native';
-
 /**
  * 로컬픽 백엔드 API 설정.
  *
- * 개발 중에는 로컬 서버를 바라본다. 플랫폼마다 localhost 의미가 달라 분기가 필요하다.
- *  - iOS 시뮬레이터  : localhost 그대로 동작
- *  - Android 에뮬레이터: 10.0.2.2 가 호스트 PC를 가리킴
- *  - 실기기(Expo Go) : 같은 와이파이의 개발 PC LAN IP 필요
+ * 기본값은 Render 배포 서버다. 로컬 백엔드로 붙이려면 .env 에 주소를 지정한다.
+ *   iOS 시뮬레이터   : EXPO_PUBLIC_API_BASE_URL=http://localhost:8080
+ *   Android 에뮬레이터: EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8080
+ *   실기기(Expo Go)  : EXPO_PUBLIC_API_BASE_URL=http://<개발PC LAN IP>:8080
  *
- * 실기기로 테스트하려면 .env 에 EXPO_PUBLIC_API_BASE_URL 을 직접 지정한다.
- *   EXPO_PUBLIC_API_BASE_URL=http://192.168.0.10:8080
+ * 참고: Render 무료 플랜은 15분 무활동 시 서버가 잠든다.
+ * 첫 요청이 30초~1분 걸릴 수 있으므로 production timeout을 넉넉히 잡는다.
  */
-const DEV_PORT = 8080;
-const DEFAULT_TIMEOUT_MS = 10000;
+const PRODUCTION_BASE_URL = 'https://localpick-api.onrender.com';
+const DEFAULT_TIMEOUT_MS = process.env.EXPO_PUBLIC_APP_ENV === 'production' ? 75000 : 60000;
 
-function resolveDevBaseUrl() {
+function resolveBaseUrl() {
   const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL;
+
   if (fromEnv) {
     return fromEnv.replace(/\/+$/, '');
   }
 
-  if (Platform.OS === 'android') {
-    return `http://10.0.2.2:${DEV_PORT}`;
-  }
-
-  return `http://localhost:${DEV_PORT}`;
+  return PRODUCTION_BASE_URL;
 }
 
-export const API_BASE_URL = resolveDevBaseUrl();
+export const API_BASE_URL = resolveBaseUrl();
+
+/** 배포 서버를 바라보는 중인지 (콜드 스타트 안내 문구 등에 사용) */
+export const IS_REMOTE_API = API_BASE_URL === PRODUCTION_BASE_URL;
 
 export class ApiError extends Error {
   constructor(message, { status = null, data = null, code = null } = {}) {
@@ -137,14 +135,14 @@ export async function requestApi(path, options = {}) {
     return unwrapPayload(payload, response);
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new ApiError(`서버 응답이 지연되고 있습니다. (${url})`);
+      throw new ApiError('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
     }
 
     if (error instanceof ApiError) {
       throw error;
     }
 
-    throw new ApiError(`서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인하세요. (${url})`);
+    throw new ApiError('서비스에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
   } finally {
     clearTimeout(timeoutId);
   }
