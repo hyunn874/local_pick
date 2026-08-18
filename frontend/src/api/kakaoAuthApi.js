@@ -1,16 +1,25 @@
 import * as AuthSession from 'expo-auth-session';
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
 import { kakaoConfig } from './kakaoConfig';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const KAKAO_TOKEN_KEY = 'localpick.kakaoAccessToken';
 const KAKAO_DISCOVERY = {
   authorizationEndpoint: 'https://kauth.kakao.com/oauth/authorize',
-  tokenEndpoint: 'https://kauth.kakao.com/oauth/token',
 };
+const CANCELLED_RESULT_TYPES = new Set(['cancel', 'dismiss', 'locked']);
+
+function createAuthCancelledError() {
+  const error = new Error('Kakao login was cancelled.');
+  error.isAuthCancelled = true;
+
+  return error;
+}
+
+function getKakaoRedirectUri() {
+  return kakaoConfig.redirectUri;
+}
 
 export async function signInWithKakao() {
   if (!kakaoConfig.restApiKey) {
@@ -21,46 +30,37 @@ export async function signInWithKakao() {
   // "Another web browser is already open" 으로 실패한다.
   await WebBrowser.dismissAuthSession().catch(() => {});
 
+  const redirectUri = getKakaoRedirectUri();
+
   const request = new AuthSession.AuthRequest({
     clientId: kakaoConfig.restApiKey,
-    redirectUri: kakaoConfig.redirectUri,
+    redirectUri,
     responseType: AuthSession.ResponseType.Code,
+    usePKCE: false,
   });
 
   const result = await request.promptAsync(KAKAO_DISCOVERY);
 
-  if (result.type !== 'success' || !result.params.code) {
-    return null;
+  if (result.type === 'error') {
+    throw new Error(
+      result.params?.error_description || result.params?.error || 'Kakao login failed.',
+    );
   }
 
-  const response = await fetch(KAKAO_DISCOVERY.tokenEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: kakaoConfig.restApiKey,
-      redirect_uri: kakaoConfig.redirectUri,
-      code: result.params.code,
-    }).toString(),
-  });
-
-  const token = await response.json();
-
-  if (!response.ok || !token.access_token) {
-    throw new Error(token.error_description || token.error || 'Kakao login failed.');
+  if (CANCELLED_RESULT_TYPES.has(result.type)) {
+    throw createAuthCancelledError();
   }
 
-  await SecureStore.setItemAsync(KAKAO_TOKEN_KEY, token.access_token);
+  if (result.type !== 'success') {
+    throw new Error('Kakao login failed.');
+  }
 
-  return token;
-}
+  if (!result.params.code) {
+    throw new Error('Kakao authorization code was not returned.');
+  }
 
-export function getStoredKakaoAccessToken() {
-  return SecureStore.getItemAsync(KAKAO_TOKEN_KEY);
-}
-
-export function signOutFromKakao() {
-  return SecureStore.deleteItemAsync(KAKAO_TOKEN_KEY);
+  return {
+    code: result.params.code,
+    redirectUri,
+  };
 }

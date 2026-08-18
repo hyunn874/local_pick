@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
@@ -16,6 +16,15 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { useAuth } from '../contexts/AuthContext';
+import { useRegions } from '../hooks/useRegions';
+import {
+  adoptedPlaces,
+  candidateRegions,
+  discoveryTags,
+  statusItems,
+} from '../mocks/mainMockData';
+
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -24,64 +33,43 @@ const PLACEHOLDER_GRAY = '#E0E0E0';
 const FEATURE_CARD_HEIGHT = 224;
 const CANDIDATE_CARD_WIDTH = Dimensions.get('window').width * 0.75;
 
-const discoveryTags = ['방문자 +31%', '소비강도 낮음', '다양성 하위 22%'];
-
-const candidateRegions = [
-  {
-    id: 'hongseong',
-    icon: '◇',
-    name: '충남 홍성군',
-    rank: '후보 2위',
-  },
-  {
-    id: 'gochang',
-    icon: '○',
-    name: '전북 고창군',
-    rank: '후보 3위',
-  },
-];
-
-const statusItems = [
-  {
-    label: '채택 명소',
-    value: '247',
-  },
-  {
-    label: '활성 지역',
-    value: '38',
-  },
-  {
-    label: '거주자',
-    value: '1.2K',
-  },
-];
-
-const adoptedPlaces = [
-  {
-    id: 'science-road',
-    icon: '⌖',
-    imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
-    name: '유성 과학 산책길',
-    region: '대전 유성구',
-    generation: '2030 추천',
-  },
-  {
-    id: 'market',
-    icon: '□',
-    imageUrl: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9',
-    name: '봉명 로컬마켓',
-    region: '대전 유성구',
-    generation: '가족 추천',
-  },
-];
-
 export default function MainScreen() {
+  const { user } = useAuth();
   const navigation = useNavigation();
   const cardAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasNotification, setHasNotification] = useState(true);
+  const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
+  const userRegionName = user?.region?.fullName || '대전광역시 유성구';
+  const regionCandidateItems = useMemo(() => {
+    const candidates = regions
+      .filter((region) => region.fullName !== userRegionName)
+      .slice(0, 6)
+      .map((region, index) => ({
+        id: region.regionCode || String(region.id),
+        icon: index % 2 === 0 ? '◇' : '○',
+        name: region.fullName,
+        rank: `후보 ${index + 1}위`,
+      }));
+
+    return candidates.length > 0 ? candidates : candidateRegions;
+  }, [regions, userRegionName]);
+  const liveStatusItems = useMemo(
+    () =>
+      statusItems.map((item) => {
+        if (item.label !== '활성 지역') {
+          return item;
+        }
+
+        return {
+          ...item,
+          value: isRegionsLoading ? '...' : String(regions.length || item.value),
+        };
+      }),
+    [isRegionsLoading, regions.length],
+  );
 
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
@@ -119,6 +107,7 @@ export default function MainScreen() {
 
   const handleRefresh = () => {
     setRefreshing(true);
+    void refetchRegions();
 
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
@@ -185,7 +174,7 @@ export default function MainScreen() {
         ) : (
           <Animated.View style={cardAnimatedStyle}>
             <View style={styles.featureCard}>
-              <Text style={styles.featureRegion}>대전 유성구</Text>
+              <Text style={styles.featureRegion}>{userRegionName}</Text>
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>지금 보기 직전</Text>
               </View>
@@ -214,7 +203,7 @@ export default function MainScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.candidateList}
           >
-            {candidateRegions.map((region) => (
+            {regionCandidateItems.map((region) => (
               <View key={region.id} style={styles.candidateCard}>
                 <View style={styles.candidateIcon}>
                   <Text style={styles.candidateIconText}>{region.icon}</Text>
@@ -231,7 +220,7 @@ export default function MainScreen() {
         <View style={styles.statusCard}>
           <Text style={styles.blockTitle}>로컬픽 현황</Text>
           <View style={styles.statusRow}>
-            {statusItems.map((item) => (
+            {liveStatusItems.map((item) => (
               <View key={item.label} style={styles.statusItem}>
                 <Text style={styles.statusValue}>{item.value}</Text>
                 <Text style={styles.statusLabel}>{item.label}</Text>
