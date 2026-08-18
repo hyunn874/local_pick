@@ -30,7 +30,7 @@
       "kakao": {
         "restApiKey": "",
         "javascriptKey": "",
-        "redirectUri": "https://auth.expo.dev/@hyup/localpick"
+        "redirectUri": "localpick://auth/kakao"
       }
     },
     "plugins": [

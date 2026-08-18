@@ -9,3 +9,7 @@ yarn-error.*
 !.env.example
 
 .env
+
+# Native directories (expo prebuild)
+/ios
+/android
