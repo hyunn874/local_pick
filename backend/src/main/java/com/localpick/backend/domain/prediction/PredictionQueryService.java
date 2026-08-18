@@ -37,7 +37,7 @@ public class PredictionQueryService {
         }
 
         List<PredictionResult> results = predictionResultRepository
-                .findByWeekStartDateAndRankingLessThanEqualOrderByRankingAsc(target, Math.max(1, limit));
+                .findTopWithRegionByWeekStartDate(target, Math.max(1, limit));
 
         LocalDate indicatorBaseYm = results.isEmpty() ? null : results.get(0).getIndicatorBaseYm();
 
