@@ -16,6 +16,10 @@ management:
       show-details: never
 
 localpick:
+  scheduler:
+    # 기본 꺼짐. application-prod.yml 에서만 true 로 켠다.
+    # 로컬에서 실수로 171회 API 호출이 나가지 않도록 @Profile("!local") 을 함께 건다.
+    enabled: false
   kto:
     # 관광빅데이터 정보서비스 — 방문자수 (40%)
     base-url: https://apis.data.go.kr/B551011/DataLabService
