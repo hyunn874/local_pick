@@ -19,6 +19,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { useAuth } from '../contexts/AuthContext';
+import { earningMethods, localPassSummary, usageHistory } from '../mocks/localPassMockData';
+
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -27,53 +30,6 @@ const RED = '#D94848';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
-const LOCAL_PASS_COUNT = 3;
-const ONGOING_PROGRESS = 83;
-
-const earningMethods = [
-  {
-    id: 'signup',
-    icon: '🎁',
-    title: '가입 즉시 지급',
-    description: '회원가입 완료',
-    reward: '+5개',
-    alertTitle: '가입 보상',
-    alertMessage: '회원가입 완료 시 즉시 5개 지급돼요!',
-  },
-  {
-    id: 'activity',
-    icon: '❤️',
-    title: '활동 기준 충족',
-    description: '좋아요 10 + 댓글 3 + 공유 2',
-    reward: '+2개',
-    alertTitle: '활동 보상',
-    alertMessage: '좋아요 10 + 댓글 3 + 공유 2 달성 시 2개 지급!',
-  },
-  {
-    id: 'picked',
-    icon: '📍',
-    title: '로컬픽 장소 채택',
-    description: '좋아요 30 + 댓글 10 + 공유 5',
-    reward: '+5개',
-    alertTitle: '채택 보상',
-    alertMessage: '좋아요 30 + 댓글 10 + 공유 5 달성 시 5개 지급!',
-  },
-];
-
-const usageHistory = [
-  {
-    id: 'cafe',
-    place: '대전 유성구·봉명동 골목 카페',
-    date: '04.18',
-    amount: '-1개',
-  },
-  {
-    id: 'gapcheon',
-    place: '대전 유성구·갑천 산책로',
-    date: '04.15',
-    amount: '-1개',
-  },
-];
 
 function EarningMethodItem({ method }) {
   const handlePress = () => {
@@ -114,13 +70,19 @@ function UsageHistoryItem({ item }) {
 }
 
 export default function LocalPassScreen() {
+  const { logout, user } = useAuth();
   const navigation = useNavigation();
   const passCountAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
   const [displayPassCount, setDisplayPassCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const hasPass = LOCAL_PASS_COUNT > 0;
+  const passCount = user?.localPassBalance ?? localPassSummary.count;
+  const regionName = user?.region?.fullName || '거주 지역 미설정';
+  const profileName = user?.nickname || '로컬픽 사용자';
+  const profileInitial = profileName.slice(0, 1);
+  const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
+  const hasPass = passCount > 0;
 
   useAnimatedReaction(
     () => passCountAnimation.value,
@@ -130,15 +92,15 @@ export default function LocalPassScreen() {
   );
 
   useEffect(() => {
-    passCountAnimation.value = withTiming(LOCAL_PASS_COUNT, { duration: 600 });
-    progressAnimation.value = withTiming(ONGOING_PROGRESS, { duration: 800 });
+    passCountAnimation.value = withTiming(passCount, { duration: 600 });
+    progressAnimation.value = withTiming(localPassSummary.ongoingProgress, { duration: 800 });
 
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [passCountAnimation, progressAnimation]);
+  }, [passCount, passCountAnimation, progressAnimation]);
 
   const progressAnimatedStyle = useAnimatedStyle(() => ({
     width: `${progressAnimation.value}%`,
@@ -165,6 +127,26 @@ export default function LocalPassScreen() {
     Alert.alert('패스 사용', '지도에서 타지역 명소를 열람할 수 있어요!');
   };
 
+  const handleShowRegion = () => {
+    Alert.alert('내 지역', `현재 거주 지역: ${regionName}`);
+  };
+
+  const handleLogout = () => {
+    Alert.alert('로그아웃', '현재 계정에서 로그아웃할까요?', [
+      {
+        text: '취소',
+        style: 'cancel',
+      },
+      {
+        text: '로그아웃',
+        style: 'destructive',
+        onPress: () => {
+          void logout();
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -185,7 +167,7 @@ export default function LocalPassScreen() {
           <TouchableOpacity
             style={styles.locationButton}
             activeOpacity={0.7}
-            onPress={() => Alert.alert('내 위치', '현재 거주 지역: 대전 유성구')}
+            onPress={handleShowRegion}
           >
             <Text style={styles.locationIcon}>📍</Text>
           </TouchableOpacity>
@@ -195,12 +177,17 @@ export default function LocalPassScreen() {
           <View style={styles.profileTopRow}>
             <View style={styles.profileLeft}>
               <View style={styles.profileIcon}>
-                <Text style={styles.profileInitial}>유</Text>
+                <Text style={styles.profileInitial}>{profileInitial}</Text>
               </View>
-              <View>
-                <Text style={styles.profileName}>유성구주민1</Text>
+              <View style={styles.profileTextGroup}>
+                <Text style={styles.profileName} numberOfLines={1}>
+                  {profileName}
+                </Text>
+                <Text style={styles.profileRegion} numberOfLines={1}>
+                  {regionName}
+                </Text>
                 <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedBadgeText}>거주자 인증 완료 ✓</Text>
+                  <Text style={styles.verifiedBadgeText}>{verificationLabel}</Text>
                 </View>
               </View>
             </View>
@@ -217,6 +204,14 @@ export default function LocalPassScreen() {
             onPress={handleUsePass}
           >
             <Text style={styles.usePassButtonText}>로컬패스 사용하기</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.logoutButton}
+            activeOpacity={0.7}
+            onPress={handleLogout}
+          >
+            <Text style={styles.logoutButtonText}>로그아웃</Text>
           </TouchableOpacity>
         </View>
 
@@ -236,7 +231,7 @@ export default function LocalPassScreen() {
             <Text style={styles.ongoingTitle}>아는 사람만 가는 봉명동 골목 카페</Text>
             <View style={styles.progressHeader}>
               <Text style={styles.progressText}>채택까지 좋아요 17개 남음</Text>
-              <Text style={styles.progressPercent}>{ONGOING_PROGRESS}%</Text>
+              <Text style={styles.progressPercent}>{localPassSummary.ongoingProgress}%</Text>
             </View>
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, progressAnimatedStyle]} />
@@ -335,6 +330,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     gap: 12,
+    minWidth: 0,
   },
   profileIcon: {
     alignItems: 'center',
@@ -353,6 +349,16 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     fontSize: 18,
     fontWeight: '900',
+  },
+  profileTextGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileRegion: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
   },
   verifiedBadge: {
     alignSelf: 'flex-start',
@@ -393,6 +399,19 @@ const styles = StyleSheet.create({
   },
   usePassButtonText: {
     color: CARD,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  logoutButton: {
+    alignItems: 'center',
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 10,
+    paddingVertical: 12,
+  },
+  logoutButtonText: {
+    color: TEXT_SECONDARY,
     fontSize: 14,
     fontWeight: '900',
   },

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRegions } from '../hooks/useRegions';
 import {
   Alert,
   ScrollView,
@@ -17,6 +16,9 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import RegionSelector from '../components/RegionSelector';
+import { useAuth } from '../contexts/AuthContext';
+import { useRegions } from '../hooks/useRegions';
+import { generationFilters, mapPins, recommendedPlaces } from '../mocks/mapMockData';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -24,63 +26,6 @@ const CARD = '#FFFFFF';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
-
-const generationFilters = ['전체', '20대', '30-40대', '50대+'];
-
-const mapPins = [
-  {
-    id: 'bongmyeong-cafe',
-    name: '봉명동 카페',
-    icon: '☕',
-    category: '카페',
-    generation: '20대',
-    position: {
-      top: '28%',
-      left: '18%',
-    },
-  },
-  {
-    id: 'noeun-food',
-    name: '노은 맛집',
-    icon: '🍽',
-    category: '맛집',
-    generation: '30-40대',
-    position: {
-      top: '44%',
-      left: '61%',
-    },
-  },
-  {
-    id: 'gapcheon-walk',
-    name: '갑천 산책로',
-    icon: '🚶',
-    category: '산책',
-    generation: '30-40대',
-    position: {
-      top: '64%',
-      left: '35%',
-    },
-  },
-];
-
-const recommendedPlaces = [
-  {
-    id: 'hidden-cafe',
-    icon: '☕',
-    title: '봉명동 숨은 골목 카페',
-    category: '카페',
-    generation: '20대',
-    passCount: '로컬패스 1개',
-  },
-  {
-    id: 'sunset-walk',
-    icon: '🚶',
-    title: '갑천 노을 산책로',
-    category: '산책',
-    generation: '30-40대',
-    passCount: '로컬패스 1개',
-  },
-];
 
 function GenerationFilter({ label, selectedFilter, onPress }) {
   const isSelected = selectedFilter === label;
@@ -197,6 +142,7 @@ function PlaceBottomSheet({ place, animatedStyle, onClose }) {
 }
 
 export default function MapScreen() {
+  const { user } = useAuth();
   const sheetAnimation = useSharedValue(0);
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
@@ -238,6 +184,19 @@ export default function MapScreen() {
 
   const hasSearchResults =
     filteredPins.length > 0 || filteredRecommendations.length > 0;
+
+  useEffect(() => {
+    if (selectedRegion || regions.length === 0) {
+      return;
+    }
+
+    const userRegionCode = user?.region?.code;
+    const userRegion = regions.find((region) => region.regionCode === userRegionCode);
+
+    if (userRegion) {
+      setSelectedRegion(userRegion);
+    }
+  }, [regions, selectedRegion, user?.region?.code]);
 
   useEffect(() => {
     if (!selectedPin) {
@@ -333,7 +292,7 @@ export default function MapScreen() {
             ? '불러오는 중…'
             : error
               ? `오류: ${error}`
-              : `백엔드 지역 ${regions.length}개`}
+              : `백엔드 지역 ${regions.length}개 · 시도 ${sidoList.length}개`}
         </Text>
         {hasSearchResults ? (
           filteredPins.map((pin) => (

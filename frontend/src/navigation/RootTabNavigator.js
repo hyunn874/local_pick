@@ -1,27 +1,22 @@
-import { useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '../contexts/AuthContext';
 import ChatRoomScreen from '../screens/ChatRoomScreen';
-import DevScreen from '../screens/dev/DevScreen';
 import HotLocalScreen from '../screens/HotLocalScreen';
 import LocalPassScreen from '../screens/LocalPassScreen';
 import LoginScreen from '../screens/LoginScreen';
 import MainScreen from '../screens/MainScreen';
 import MapScreen from '../screens/MapScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
 
 const Tab = createBottomTabNavigator();
 const MAIN_GREEN = '#2D5C44';
 const TEXT_MUTED = '#999999';
 
-/** 개발 확인용 탭. 배포 전 false 로 바꾼다. */
-const SHOW_DEV_TAB = true;
-
-const VISIBLE_TAB_NAMES = SHOW_DEV_TAB
-  ? ['Main', 'Map', 'ChatRoom', 'LocalPass', 'Dev']
-  : ['Main', 'Map', 'ChatRoom', 'LocalPass'];
+const VISIBLE_TAB_NAMES = ['Main', 'Map', 'ChatRoom', 'LocalPass'];
 
 const tabIcons = {
   Main: {
@@ -39,10 +34,6 @@ const tabIcons = {
   LocalPass: {
     active: 'ticket',
     inactive: 'ticket-outline',
-  },
-  Dev: {
-    active: 'construct',
-    inactive: 'construct-outline',
   },
 };
 
@@ -109,10 +100,22 @@ function LocalPickTabBar({ state, descriptors, navigation }) {
 }
 
 export default function RootTabNavigator() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isInitializing, isLoggedIn, isOnboarded } = useAuth();
+
+  if (isInitializing) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator color={MAIN_GREEN} />
+      </View>
+    );
+  }
 
   if (!isLoggedIn) {
-    return <LoginScreen onLoginSuccess={() => setIsLoggedIn(true)} />;
+    return <LoginScreen />;
+  }
+
+  if (!isOnboarded) {
+    return <OnboardingScreen />;
   }
 
   return (
@@ -127,9 +130,6 @@ export default function RootTabNavigator() {
       <Tab.Screen name="Map" component={MapScreen} options={{ title: '지도' }} />
       <Tab.Screen name="ChatRoom" component={ChatRoomScreen} options={{ title: '소통방' }} />
       <Tab.Screen name="LocalPass" component={LocalPassScreen} options={{ title: '내 로컬패스' }} />
-      {SHOW_DEV_TAB ? (
-        <Tab.Screen name="Dev" component={DevScreen} options={{ title: '개발' }} />
-      ) : null}
       <Tab.Screen
         name="HotLocalScreen"
         component={HotLocalScreen}
@@ -142,6 +142,12 @@ export default function RootTabNavigator() {
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    alignItems: 'center',
+    backgroundColor: '#F8F6F1',
+    flex: 1,
+    justifyContent: 'center',
+  },
   tabBarShell: {
     backgroundColor: 'transparent',
     paddingHorizontal: 14,

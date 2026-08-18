@@ -7,7 +7,7 @@
  *   실기기(Expo Go)  : EXPO_PUBLIC_API_BASE_URL=http://<개발PC LAN IP>:8080
  *
  * 참고: Render 무료 플랜은 15분 무활동 시 서버가 잠든다.
- * 첫 요청이 30초~1분 걸릴 수 있으므로 production timeout을 넉넉히 잡는다.
+ * 첫 요청이 30초~1분 걸릴 수 있으므로 timeout을 넉넉히 잡는다.
  */
 const PRODUCTION_BASE_URL = 'https://localpick-api.onrender.com';
 const DEFAULT_TIMEOUT_MS = process.env.EXPO_PUBLIC_APP_ENV === 'production' ? 75000 : 60000;
@@ -26,6 +26,11 @@ export const API_BASE_URL = resolveBaseUrl();
 
 /** 배포 서버를 바라보는 중인지 (콜드 스타트 안내 문구 등에 사용) */
 export const IS_REMOTE_API = API_BASE_URL === PRODUCTION_BASE_URL;
+
+const authHandlers = {
+  getAccessToken: null,
+  onUnauthorized: null,
+};
 
 export class ApiError extends Error {
   constructor(message, { status = null, data = null, code = null } = {}) {
@@ -109,28 +114,55 @@ export async function requestApi(path, options = {}) {
     body,
     headers,
     params,
+    skipAuth = false,
+    skipRefresh = false,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     ...fetchOptions
   } = options;
   const url = buildUrl(path, params);
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
-  let response;
-  try {
-    response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-        ...headers,
-      },
-      body: normalizeBody(body),
-      signal: controller.signal,
-      ...fetchOptions,
-    });
+  async function sendRequest() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const accessToken = skipAuth ? null : authHandlers.getAccessToken?.();
+    const requestHeaders = {
+      Accept: 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...headers,
+    };
 
-    const payload = await parsePayload(response);
+    try {
+      const response = await fetch(url, {
+        headers: requestHeaders,
+        body: normalizeBody(body),
+        signal: controller.signal,
+        ...fetchOptions,
+      });
+      const payload = await parsePayload(response);
+
+      return { response, payload };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  try {
+    let { response, payload } = await sendRequest();
+
+    if (
+      response.status === 401 &&
+      !skipAuth &&
+      !skipRefresh &&
+      typeof authHandlers.onUnauthorized === 'function'
+    ) {
+      const didRefresh = await authHandlers.onUnauthorized();
+
+      if (didRefresh) {
+        ({ response, payload } = await sendRequest());
+      }
+    }
 
     return unwrapPayload(payload, response);
   } catch (error) {
@@ -143,13 +175,25 @@ export async function requestApi(path, options = {}) {
     }
 
     throw new ApiError('서비스에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
-  } finally {
-    clearTimeout(timeoutId);
   }
+}
+
+export function setAuthHandlers(nextHandlers = {}) {
+  authHandlers.getAccessToken =
+    typeof nextHandlers.getAccessToken === 'function' ? nextHandlers.getAccessToken : null;
+  authHandlers.onUnauthorized =
+    typeof nextHandlers.onUnauthorized === 'function' ? nextHandlers.onUnauthorized : null;
+}
+
+export function clearAuthHandlers() {
+  authHandlers.getAccessToken = null;
+  authHandlers.onUnauthorized = null;
 }
 
 export const apiClient = {
   request: requestApi,
+  setAuthHandlers,
+  clearAuthHandlers,
   get: (path, options) => requestApi(path, { ...options, method: 'GET' }),
   post: (path, body, options) => requestApi(path, { ...options, body, method: 'POST' }),
   put: (path, body, options) => requestApi(path, { ...options, body, method: 'PUT' }),

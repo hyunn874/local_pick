@@ -15,43 +15,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 
+import { useAuth } from '../contexts/AuthContext';
+import { initialPosts } from '../mocks/chatRoomMockData';
+
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
-
-const INITIAL_POSTS = [
-  {
-    id: 'post-1',
-    author: '김유진',
-    time: '12분 전',
-    generationTag: '20대 추천',
-    categoryTag: '카페',
-    imageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-    title: '봉명동 골목 안쪽 조용한 로스터리',
-    content: '주말 오후에도 좌석이 넉넉하고 직접 볶은 원두 향이 좋아요. 혼자 책 읽기에도 편한 곳이라 동네 명소로 추천합니다.',
-    progress: 72,
-    likes: 48,
-    likedByMe: false,
-    comments: 12,
-  },
-  {
-    id: 'post-2',
-    author: '박현우',
-    time: '34분 전',
-    generationTag: '가족 추천',
-    categoryTag: '산책',
-    imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
-    title: '갑천변 노을 산책 코스',
-    content: '해질 무렵에 걷기 좋고 길이 넓어서 유모차도 편하게 이동할 수 있어요. 근처에 작은 쉼터도 있어서 쉬어가기 좋습니다.',
-    progress: 58,
-    likes: 31,
-    likedByMe: false,
-    comments: 8,
-  },
-];
 
 function PostCard({ post, onPress, onToggleLike }) {
   return (
@@ -116,11 +88,14 @@ function PostCard({ post, onPress, onToggleLike }) {
 }
 
 export default function ChatRoomScreen() {
+  const { user } = useAuth();
   const inputRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
-  const [posts, setPosts] = useState(INITIAL_POSTS);
+  const [posts, setPosts] = useState(initialPosts);
   const [message, setMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const regionName = user?.region?.fullName || '지역';
+  const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
 
   useEffect(() => {
     return () => {
@@ -189,8 +164,8 @@ export default function ChatRoomScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>대전 유성구 소통방</Text>
-            <Text style={styles.subtitle}>거주자 인증 완료 ✓</Text>
+            <Text style={styles.title}>{regionName} 소통방</Text>
+            <Text style={styles.subtitle}>{verificationLabel}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>

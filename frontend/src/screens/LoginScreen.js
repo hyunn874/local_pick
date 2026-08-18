@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -10,12 +10,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-const KAKAO_YELLOW = '#FEE500';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function LoginScreen({ onLoginSuccess = null }) {
+const KAKAO_YELLOW = '#FEE500';
+const isKakaoLoginEnabled = process.env.EXPO_PUBLIC_ENABLE_KAKAO_LOGIN === 'true';
+
+export default function LoginScreen() {
+  const { devLogin, loginWithKakao } = useAuth();
   const iconAnimation = useSharedValue(0);
   const copyAnimation = useSharedValue(0);
   const buttonAnimation = useSharedValue(0);
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
 
   useEffect(() => {
     iconAnimation.value = withTiming(1, { duration: 700 });
@@ -45,11 +50,36 @@ export default function LoginScreen({ onLoginSuccess = null }) {
     ],
   }));
 
+  const handleLogin = async (loginAction) => {
+    if (isLoginLoading) {
+      return;
+    }
+
+    setIsLoginLoading(true);
+
+    try {
+      await loginAction();
+    } catch (error) {
+      if (error?.isAuthCancelled) {
+        return;
+      }
+
+      Alert.alert('로그인 실패', error?.message || '잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsLoginLoading(false);
+    }
+  };
+
   const handleKakaoLogin = () => {
-    onLoginSuccess?.({
-      provider: 'kakao',
-      mode: 'bypass',
-    });
+    if (!isKakaoLoginEnabled) {
+      return;
+    }
+
+    void handleLogin(loginWithKakao);
+  };
+
+  const handleDevLogin = () => {
+    void handleLogin(devLogin);
   };
 
   return (
@@ -73,12 +103,32 @@ export default function LoginScreen({ onLoginSuccess = null }) {
 
         <Animated.View style={[styles.bottomArea, buttonAnimatedStyle]}>
           <TouchableOpacity
-            style={styles.kakaoButton}
+            style={[
+              styles.kakaoButton,
+              (!isKakaoLoginEnabled || isLoginLoading) && styles.disabledKakaoButton,
+            ]}
             activeOpacity={0.85}
+            disabled={!isKakaoLoginEnabled || isLoginLoading}
             onPress={handleKakaoLogin}
           >
-            <Text style={styles.kakaoButtonText}>카카오로 시작하기</Text>
+            {isLoginLoading ? (
+              <ActivityIndicator color="#191919" />
+            ) : (
+              <Text style={styles.kakaoButtonText}>
+                {isKakaoLoginEnabled ? '카카오로 시작하기' : '카카오 로그인 준비 중'}
+              </Text>
+            )}
           </TouchableOpacity>
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.devButton}
+              activeOpacity={0.85}
+              disabled={isLoginLoading}
+              onPress={handleDevLogin}
+            >
+              <Text style={styles.devButtonText}>개발용으로 시작하기</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.termsText}>
             시작하면 이용약관 및 개인정보처리방침에 동의합니다
           </Text>
@@ -161,10 +211,28 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     minHeight: 56,
   },
+  disabledKakaoButton: {
+    opacity: 0.75,
+  },
   kakaoButtonText: {
     color: '#191919',
     fontSize: 16,
     fontWeight: '700',
+  },
+  devButton: {
+    alignItems: 'center',
+    borderColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 50,
+    justifyContent: 'center',
+    marginHorizontal: 24,
+    marginTop: 10,
+  },
+  devButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
   termsText: {
     color: '#FFFFFF',

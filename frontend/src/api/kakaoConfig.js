@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+export const KAKAO_REDIRECT_URI = 'localpick://auth/kakao';
+
 const kakaoExtra = Constants.expoConfig?.extra?.kakao;
 
 export const kakaoConfig = {
@@ -8,5 +10,5 @@ export const kakaoConfig = {
   redirectUri:
     process.env.EXPO_PUBLIC_KAKAO_REDIRECT_URI ||
     kakaoExtra?.redirectUri ||
-    'localpick://auth/kakao',
+    KAKAO_REDIRECT_URI,
 };
