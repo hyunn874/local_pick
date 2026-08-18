@@ -1,5 +1,4 @@
 import * as AuthSession from 'expo-auth-session';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -13,40 +12,22 @@ const KAKAO_DISCOVERY = {
   tokenEndpoint: 'https://kauth.kakao.com/oauth/token',
 };
 
-function getKakaoRedirectUri() {
-  const hasExplicitRedirectUri = Boolean(process.env.EXPO_PUBLIC_KAKAO_REDIRECT_URI);
-
-  if (!hasExplicitRedirectUri && Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
-    return AuthSession.makeRedirectUri({
-      path: 'auth/kakao',
-      preferLocalhost: true,
-    });
-  }
-
-  return kakaoConfig.redirectUri;
-}
-
 export async function signInWithKakao() {
   if (!kakaoConfig.restApiKey) {
     throw new Error('Kakao REST API key is not configured.');
   }
 
-  const redirectUri = getKakaoRedirectUri();
+  // 이전 인증 세션이 남아 있으면 promptAsync 가
+  // "Another web browser is already open" 으로 실패한다.
+  await WebBrowser.dismissAuthSession().catch(() => {});
 
   const request = new AuthSession.AuthRequest({
     clientId: kakaoConfig.restApiKey,
-    redirectUri,
+    redirectUri: kakaoConfig.redirectUri,
     responseType: AuthSession.ResponseType.Code,
-    usePKCE: false,
   });
 
   const result = await request.promptAsync(KAKAO_DISCOVERY);
-
-  if (result.type === 'error') {
-    throw new Error(
-      result.params?.error_description || result.params?.error || 'Kakao login failed.',
-    );
-  }
 
   if (result.type !== 'success' || !result.params.code) {
     return null;
@@ -60,7 +41,7 @@ export async function signInWithKakao() {
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       client_id: kakaoConfig.restApiKey,
-      redirect_uri: redirectUri,
+      redirect_uri: kakaoConfig.redirectUri,
       code: result.params.code,
     }).toString(),
   });
