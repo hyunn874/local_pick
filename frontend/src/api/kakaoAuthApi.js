@@ -28,7 +28,13 @@ export async function signInWithKakao() {
 
   // 이전 인증 세션이 남아 있으면 promptAsync 가
   // "Another web browser is already open" 으로 실패한다.
-  await WebBrowser.dismissAuthSession().catch(() => {});
+  // dismissAuthSession 은 플랫폼에 따라 Promise 를 반환하지 않으므로
+  // 반환값에 .catch() 를 걸지 않고 try/catch 로 감싼다.
+  try {
+    await WebBrowser.dismissAuthSession();
+  } catch {
+    // 닫을 세션이 없으면 무시한다
+  }
 
   const redirectUri = getKakaoRedirectUri();
 

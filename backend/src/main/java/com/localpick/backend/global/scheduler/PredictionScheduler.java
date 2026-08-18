@@ -8,20 +8,25 @@ import java.time.YearMonth;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
  * 주간 예측 파이프라인 자동 실행.
  *
- * 켜고 끄는 스위치를 둔 이유는 로컬 개발 중에 공사 API 를 무심코 두드리지 않기 위해서다.
- * 기본값은 꺼짐이고, prod 프로파일에서만 켠다.
+ * 두 가지 가드를 겹쳐 쓴다. 역할이 다르기 때문이다.
+ *   @Profile("!local")           — 로컬 개발 중 171회 API 호출이 실수로 나가는 것을 막는 안전장치.
+ *                                  IDE 에서 prod 프로파일을 지정해도 이 빈은 생성되지 않는다.
+ *   @ConditionalOnProperty       — 배포 환경(prod/staging)에서 on/off 를 yml 로 조절하는 스위치.
+ *                                  기본값은 false(꺼짐). application-prod.yml 에서만 true 로 켠다.
  *
  * 시간대를 Asia/Seoul 로 못박은 것은 Render 컨테이너가 UTC 로 돌기 때문이다.
- * 지정하지 않으면 월요일 새벽 작업이 일요일 낮에 도는 셈이 된다.
+ * 지정하지 않으면 화요일 새벽 작업이 월요일 낮에 도는 셈이 된다.
  */
 @Slf4j
 @Component
+@Profile("!local")
 @ConditionalOnProperty(name = "localpick.scheduler.enabled", havingValue = "true")
 public class PredictionScheduler {
 
@@ -53,13 +58,19 @@ public class PredictionScheduler {
     }
 
     /**
-     * 매주 월요일 새벽 4시 — 방문자수 수집 후 예측 재계산.
+     * 매주 화요일 새벽 4시 — 방문자수 수집 후 예측 재계산.
+     *
+     * 월요일이 아니라 화요일로 잡은 이유 두 가지.
+     * (1) 공사 DataLab API 는 주말~월요일 초에 갱신 지연이 잦다. 화요일이면 그 지연이
+     *     대부분 해소된 시점이라 전 주 데이터를 온전히 받을 확률이 높다.
+     * (2) 실패 시 화~금 사이에 수동 재실행 여유가 4일 남는다. 월요일에 돌리면
+     *     한 주 내내 기다려야 다음 기회가 온다.
      *
      * 수집과 예측을 한 메서드에 묶은 것은 순서가 반드시 지켜져야 하기 때문이다.
      * 수집이 실패하면 예측은 돌리지 않는다. 직전 주 결과를 그대로 두는 편이,
      * 절반만 채워진 데이터로 순위를 새로 뽑는 것보다 낫다.
      */
-    @Scheduled(cron = "0 0 4 * * MON", zone = ZONE)
+    @Scheduled(cron = "0 0 4 * * TUE", zone = ZONE)
     public void runWeekly() {
         LocalDate target = LocalDate.now().minusWeeks(visitorLagWeeks);
         log.info("[Scheduler] 주간 파이프라인 시작 — 대상 주 {}", VisitorCollectService.weekStartOf(target));

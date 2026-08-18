@@ -16,6 +16,10 @@ management:
       show-details: never
 
 localpick:
+  scheduler:
+    # 기본 꺼짐. application-prod.yml 에서만 true 로 켠다.
+    # 로컬에서 실수로 171회 API 호출이 나가지 않도록 @Profile("!local") 을 함께 건다.
+    enabled: false
   kto:
     # 관광빅데이터 정보서비스 — 방문자수 (40%)
     base-url: https://apis.data.go.kr/B551011/DataLabService
@@ -31,6 +35,11 @@ localpick:
     rest-api-key: ${KAKAO_REST_API_KEY:}
     token-url: https://kauth.kakao.com/oauth/token
     user-info-url: https://kapi.kakao.com/v2/user/me
+    # 카카오 콘솔에 등록하는 리다이렉트 URI (https 만 허용되므로 서버가 받는다)
+    callback-url: ${KAKAO_CALLBACK_URL:https://localpick-api.onrender.com/api/auth/kakao/callback}
+  app:
+    # 콜백 처리 후 앱으로 되돌려보낼 딥링크
+    scheme-success-url: ${APP_SCHEME_SUCCESS_URL:localpick://auth/kakao}
   jwt:
     secret: ${JWT_SECRET:}
     # Access 2시간, Refresh 14일
