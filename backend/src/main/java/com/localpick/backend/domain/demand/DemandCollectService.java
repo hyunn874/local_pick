@@ -108,7 +108,39 @@ public class DemandCollectService {
         return unmatched;
     }
 
-    // __RESOLVE__
+    /**
+     * 시군구코드로 이번 달 집계 객체를 찾아온다.
+     *
+     * 같은 지역이 지표별로 여러 번 등장하므로 cache 로 재사용한다.
+     * DB 에 이미 있으면 그 행을 갱신하고, 없으면 새로 만든다 (월 1회 재수집 대비).
+     * 시도 합계 행(signguCd="0")이나 마스터에 없는 코드는 null 을 돌려준다.
+     */
+    private MonthlyDemandStat resolve(Map<String, MonthlyDemandStat> cache,
+                                      String signguCd, String baseYm) {
+        if (signguCd == null || signguCd.length() != 5) {
+            return null;   // 시도 합계 행
+        }
+
+        MonthlyDemandStat cached = cache.get(signguCd);
+        if (cached != null) {
+            return cached;
+        }
+
+        Region region = regionRepository.findByRegionCode(signguCd).orElse(null);
+        if (region == null) {
+            return null;
+        }
+
+        MonthlyDemandStat stat = statRepository
+                .findByRegionIdAndBaseYm(region.getId(), baseYm)
+                .orElseGet(() -> MonthlyDemandStat.builder()
+                        .region(region)
+                        .baseYm(baseYm)
+                        .build());
+
+        cache.put(signguCd, stat);
+        return stat;
+    }
 
     public record CollectResult(String baseYm, int savedRegions, int unmatchedItems) {}
 }
