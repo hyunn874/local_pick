@@ -108,7 +108,7 @@ public class MonthlyDemandStat extends BaseTimeEntity {
     }
 
     /**
-     * 연령 균등도 (0~1). 섬넘 엔트로피를 log(6) 으로 나눈 값.
+     * 연령 균등도 (0~1). 섀넌 엔트로피를 log(6) 으로 나눈 값.
      *
      * 1에 가까울수록 모든 연령대가 고르게 찾는 지역이고,
      * 0에 가까울수록 특정 세대만 오는 지역이다.

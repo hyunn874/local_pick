@@ -17,6 +17,10 @@ export async function signInWithKakao() {
     throw new Error('Kakao REST API key is not configured.');
   }
 
+  // 이전 인증 세션이 남아 있으면 promptAsync 가
+  // "Another web browser is already open" 으로 실패한다.
+  await WebBrowser.dismissAuthSession().catch(() => {});
+
   const request = new AuthSession.AuthRequest({
     clientId: kakaoConfig.restApiKey,
     redirectUri: kakaoConfig.redirectUri,
