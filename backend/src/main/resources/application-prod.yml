@@ -1,14 +1,33 @@
 # Render 배포용 프로파일.
-# DATABASE_URL, KTO_SERVICE_KEY, MOIS_SERVICE_KEY 는 Render 환경변수로 주입한다.
+#
+# 환경변수로 주입할 값
+#   DATABASE_URL      : Render Postgres Internal Database URL (jdbc: 접두어 포함)
+#   DATABASE_USERNAME : DB 사용자명
+#   DATABASE_PASSWORD : DB 비밀번호
+#   KTO_SERVICE_KEY   : 한국관광공사 인증키
+#   MOIS_SERVICE_KEY  : 행정안전부 인증키 (미신청 시 비워둠)
 spring:
   datasource:
     url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5      # Render 무료 Postgres 커넥션 제한 대응
   jpa:
     hibernate:
-      ddl-auto: validate
+      # 초기 배포에는 update 로 스키마를 생성한다.
+      # 시드 콘텐츠 투입(4주차) 전에 validate 로 전환하고 스키마는 SQL 로 관리할 것.
+      ddl-auto: update
+    properties:
+      hibernate:
+        default_batch_fetch_size: 100
     open-in-view: false
+
+server:
+  port: ${PORT:8080}            # Render 가 PORT 환경변수로 포트를 지정한다
 
 logging:
   level:
     root: info
+    com.localpick: info
