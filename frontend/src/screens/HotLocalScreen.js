@@ -12,6 +12,9 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import { fetchDevVisitorHotLocals, fetchWeeklyHotLocals } from '../api/predictionApi';
+import { hotLocalData } from '../mocks/hotLocalMockData';
+
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -21,49 +24,12 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 
-const hotLocalData = {
-  rankOne: {
-    region: '대전 유성구',
-    status: '소통방 활성화 중',
-    metrics: [
-      {
-        id: 'visitor',
-        label: '방문자 증가율',
-        value: '+31%',
-        color: MAIN_GREEN,
-        progress: 78,
-      },
-      {
-        id: 'spending',
-        label: '소비강도 지수',
-        value: '전국 평균 이하',
-        color: ORANGE,
-        progress: 46,
-      },
-      {
-        id: 'diversity',
-        label: '관광객 다양성',
-        value: '하위 22%',
-        color: RED,
-        progress: 22,
-      },
-    ],
-  },
-  ranking: [
-    {
-      rank: 'RANK 2',
-      region: '충남 홍성군',
-      visitor: '방문자 +23%',
-      diversity: '다양성 하위 34%',
-    },
-    {
-      rank: 'RANK 3',
-      region: '전북 고창군',
-      visitor: '방문자 +18%',
-      diversity: '다양성 하위 41%',
-    },
-  ],
+const metricColors = {
+  green: MAIN_GREEN,
+  orange: ORANGE,
+  red: RED,
 };
+const shouldUseDevVisitorApi = process.env.EXPO_PUBLIC_APP_ENV !== 'production';
 
 function getDaysUntilNextMonday() {
   const today = new Date();
@@ -73,15 +39,17 @@ function getDaysUntilNextMonday() {
 }
 
 function MetricRow({ metric, animatedProgressStyle }) {
+  const metricColor = metricColors[metric.colorKey] || MAIN_GREEN;
+
   return (
     <View style={styles.metricRow}>
       <View style={styles.metricHeader}>
         <Text style={styles.metricLabel}>{metric.label}</Text>
-        <Text style={[styles.metricValue, { color: metric.color }]}>{metric.value}</Text>
+        <Text style={[styles.metricValue, { color: metricColor }]}>{metric.value}</Text>
       </View>
       <View style={styles.progressTrack}>
         <Animated.View
-          style={[styles.progressFill, { backgroundColor: metric.color }, animatedProgressStyle]}
+          style={[styles.progressFill, { backgroundColor: metricColor }, animatedProgressStyle]}
         />
       </View>
     </View>
@@ -103,22 +71,69 @@ export default function HotLocalScreen() {
   const navigation = useNavigation();
   const fadeAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
+  const [weeklyHotLocalData, setWeeklyHotLocalData] = useState(hotLocalData);
   const [isLoading, setIsLoading] = useState(true);
   const nextUpdateDays = getDaysUntilNextMonday();
-  const rankOne = hotLocalData.rankOne;
+  const rankOne = weeklyHotLocalData.rankOne;
+  const visitorProgress = rankOne?.metrics.find((metric) => metric.id === 'visitor')?.progress ?? 0;
+  const spendingProgress = rankOne?.metrics.find((metric) => metric.id === 'spending')?.progress ?? 0;
+  const diversityProgress =
+    rankOne?.metrics.find((metric) => metric.id === 'diversity')?.progress ?? 0;
 
   useEffect(() => {
-    const loadingTimer = setTimeout(() => {
-      setIsLoading(false);
+    let isMounted = true;
 
+    async function loadWeeklyHotLocals() {
+      setIsLoading(true);
       fadeAnimation.value = 0;
       progressAnimation.value = 0;
-      fadeAnimation.value = withTiming(1, { duration: 400 });
-      progressAnimation.value = withTiming(1, { duration: 800 });
-    }, 1000);
+
+      try {
+        const data = shouldUseDevVisitorApi
+          ? await fetchDevVisitorHotLocals()
+          : await fetchWeeklyHotLocals();
+
+        if (isMounted && data?.rankOne) {
+          setWeeklyHotLocalData(data);
+          return;
+        }
+
+        throw new Error('Hot local API returned empty data.');
+      } catch (devApiError) {
+        try {
+          if (!shouldUseDevVisitorApi) {
+            throw devApiError;
+          }
+
+          const data = await fetchWeeklyHotLocals();
+
+          if (isMounted && data?.rankOne) {
+            setWeeklyHotLocalData(data);
+            return;
+          }
+
+          throw new Error('Weekly hot local API returned empty hot local data.');
+        } catch {
+          if (!isMounted) {
+            return;
+          }
+
+          console.warn('Hot local API fallback to mock data.', devApiError?.message);
+          setWeeklyHotLocalData(hotLocalData);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          fadeAnimation.value = withTiming(1, { duration: 400 });
+          progressAnimation.value = withTiming(1, { duration: 800 });
+        }
+      }
+    }
+
+    void loadWeeklyHotLocals();
 
     return () => {
-      clearTimeout(loadingTimer);
+      isMounted = false;
     };
   }, [fadeAnimation, progressAnimation]);
 
@@ -131,15 +146,15 @@ export default function HotLocalScreen() {
   }));
 
   const visitorProgressStyle = useAnimatedStyle(() => ({
-    width: `${progressAnimation.value * 78}%`,
+    width: `${progressAnimation.value * visitorProgress}%`,
   }));
 
   const spendingProgressStyle = useAnimatedStyle(() => ({
-    width: `${progressAnimation.value * 46}%`,
+    width: `${progressAnimation.value * spendingProgress}%`,
   }));
 
   const diversityProgressStyle = useAnimatedStyle(() => ({
-    width: `${progressAnimation.value * 22}%`,
+    width: `${progressAnimation.value * diversityProgress}%`,
   }));
 
   const progressStylesByMetricId = {
@@ -215,7 +230,7 @@ export default function HotLocalScreen() {
         )}
 
         <View style={styles.smallRanksRow}>
-          {hotLocalData.ranking.map((item) => (
+          {weeklyHotLocalData.ranking.map((item) => (
             <SmallRankCard
               key={item.rank}
               item={item}
