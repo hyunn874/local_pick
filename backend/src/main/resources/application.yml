@@ -33,6 +33,7 @@ localpick:
     service-key: ${MOIS_SERVICE_KEY:}
   kakao:
     rest-api-key: ${KAKAO_REST_API_KEY:}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
     token-url: https://kauth.kakao.com/oauth/token
     user-info-url: https://kapi.kakao.com/v2/user/me
     # 카카오 콘솔에 등록하는 리다이렉트 URI (https 만 허용되므로 서버가 받는다)
