@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum LocalPassReason {
 
+    SIGNUP_BONUS(5, "가입 축하"),
     POST_ADOPTED(50, "명소 채택"),
     FIRST_POST_IN_REGION(30, "발굴 지역 첫 제보"),
     RESIDENT_VERIFIED(20, "거주자 인증 완료"),
