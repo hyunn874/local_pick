@@ -23,16 +23,19 @@ public class KakaoOAuthClient {
 
     private final RestClient restClient;
     private final String restApiKey;
+    private final String clientSecret;
     private final String tokenUrl;
     private final String userInfoUrl;
 
     public KakaoOAuthClient(
             RestClient publicApiRestClient,
             @Value("${localpick.kakao.rest-api-key:}") String restApiKey,
+            @Value("${localpick.kakao.client-secret:}") String clientSecret,
             @Value("${localpick.kakao.token-url}") String tokenUrl,
             @Value("${localpick.kakao.user-info-url}") String userInfoUrl) {
         this.restClient = publicApiRestClient;
         this.restApiKey = restApiKey;
+        this.clientSecret = clientSecret;
         this.tokenUrl = tokenUrl;
         this.userInfoUrl = userInfoUrl;
     }
@@ -46,6 +49,12 @@ public class KakaoOAuthClient {
         form.add("client_id", restApiKey);
         form.add("redirect_uri", redirectUri);
         form.add("code", code);
+
+        // 콘솔에서 클라이언트 시크릿을 "사용함"으로 두면 이 값이 없을 때
+        // KOE010(Bad client credentials)이 발생한다.
+        if (clientSecret != null && !clientSecret.isBlank()) {
+            form.add("client_secret", clientSecret);
+        }
 
         try {
             KakaoTokenResponse response = restClient.post()
