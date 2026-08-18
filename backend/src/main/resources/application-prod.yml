@@ -24,6 +24,15 @@ spring:
         default_batch_fetch_size: 100
     open-in-view: false
 
+localpick:
+  scheduler:
+    # 배포 환경에서만 주간 파이프라인을 돌린다.
+    # 주의: Render 무료 인스턴스는 유휴 15분이면 잠든다. 잠든 동안은 예약 시각을
+    # 통짜로 놓치므로 이 설정만으로는 주간 갱신을 보장할 수 없다.
+    # 외부 핑(cron-job.org 등)으로 깨우거나, 토큰으로 보호한 관리자 실행 엔드포인트를
+    # 따로 두는 과제가 남아 있다. (dev 컨트롤러는 local 프로파일 전용)
+    enabled: true
+
 server:
   port: ${PORT:8080}            # Render 가 PORT 환경변수로 포트를 지정한다
 
