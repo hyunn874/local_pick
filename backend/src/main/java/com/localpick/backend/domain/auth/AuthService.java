@@ -30,6 +30,14 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
 
+    @org.springframework.beans.factory.annotation.Value("${localpick.kakao.rest-api-key:}")
+    private String restApiKey;
+
+    /** 인증 시작 URL 조립에 필요해 노출한다. */
+    public String restApiKey() {
+        return restApiKey;
+    }
+
     @Transactional
     public AuthResponse loginWithKakao(KakaoLoginRequest request) {
         KakaoTokenResponse token =
