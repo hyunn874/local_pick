@@ -54,6 +54,10 @@ public class KakaoOAuthClient {
         // KOE010(Bad client credentials)이 발생한다.
         if (clientSecret != null && !clientSecret.isBlank()) {
             form.add("client_secret", clientSecret);
+        } else {
+            log.warn("[Kakao] client_secret 이 비어 있어 요청에 포함하지 않습니다. "
+                    + "카카오 콘솔에서 클라이언트 시크릿이 활성화되어 있으면 "
+                    + "KAKAO_CLIENT_SECRET 환경변수가 반드시 필요합니다.");
         }
 
         try {
@@ -72,7 +76,13 @@ public class KakaoOAuthClient {
 
         } catch (RestClientException e) {
             // 인가코드는 1회용이라 재사용하면 여기서 실패한다.
-            log.error("[Kakao] 토큰 교환 실패: {}", e.getMessage());
+            log.error("[Kakao] 토큰 교환 실패: {} | clientId={}...({}자) | clientSecret {} ({}자) | redirect_uri={}",
+                    e.getMessage(),
+                    restApiKey != null && restApiKey.length() >= 4 ? restApiKey.substring(0, 4) : "null",
+                    restApiKey != null ? restApiKey.length() : 0,
+                    clientSecret == null ? "null" : clientSecret.isBlank() ? "blank" : "present",
+                    clientSecret != null ? clientSecret.length() : 0,
+                    redirectUri);
             throw new BusinessException(ErrorCode.KAKAO_AUTH_FAILED);
         }
     }
