@@ -45,15 +45,19 @@ public class AuthController {
      */
     @GetMapping("/kakao/authorize")
     public ResponseEntity<Void> authorize() {
-        String url = UriComponentsBuilder
+        // encode() 후 buildAndExpand() 를 쓰면 템플릿 변수 값이 엄격하게
+        // 퍼센트 인코딩된다. build().encode() 는 RFC 3986 허용 문자(:, /)를
+        // 쿼리에서 그대로 두므로 redirect_uri 가 인코딩되지 않는 문제가 있었다.
+        URI uri = UriComponentsBuilder
                 .fromUriString("https://kauth.kakao.com/oauth/authorize")
-                .queryParam("client_id", authService.restApiKey())
-                .queryParam("redirect_uri", callbackUrl)
+                .queryParam("client_id", "{clientId}")
+                .queryParam("redirect_uri", "{redirectUri}")
                 .queryParam("response_type", "code")
-                .build()
-                .toUriString();
+                .encode()
+                .buildAndExpand(authService.restApiKey(), callbackUrl)
+                .toUri();
 
-        return ResponseEntity.status(302).location(URI.create(url)).build();
+        return ResponseEntity.status(302).location(uri).build();
     }
 
     /**
