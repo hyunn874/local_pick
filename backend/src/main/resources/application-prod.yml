@@ -1,11 +1,14 @@
 # Render 배포용 프로파일.
 #
 # 환경변수로 주입할 값
-#   DATABASE_URL      : Render Postgres Internal Database URL (jdbc: 접두어 포함)
-#   DATABASE_USERNAME : DB 사용자명
-#   DATABASE_PASSWORD : DB 비밀번호
-#   KTO_SERVICE_KEY   : 한국관광공사 인증키
-#   MOIS_SERVICE_KEY  : 행정안전부 인증키 (미신청 시 비워둠)
+#   DATABASE_URL        : Render Postgres Internal Database URL (jdbc: 접두어 포함)
+#   DATABASE_USERNAME   : DB 사용자명
+#   DATABASE_PASSWORD   : DB 비밀번호
+#   KTO_SERVICE_KEY     : 한국관광공사 인증키
+#   MOIS_SERVICE_KEY    : 행정안전부 인증키 (미신청 시 비워둠)
+#   KAKAO_REST_API_KEY  : 카카오 REST API 키 (카카오 콘솔 > 앱 키)
+#   KAKAO_CLIENT_SECRET : 카카오 클라이언트 시크릿 (콘솔에서 "사용함" 설정 시 필수)
+#   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.onrender.com/api/auth/kakao/callback)
 spring:
   datasource:
     url: ${DATABASE_URL}
