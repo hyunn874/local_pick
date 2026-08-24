@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import apiClient from '../api/apiClient';
 import {
   completeOnboarding as completeOnboardingApi,
-  loginWithKakaoCode,
+  fetchMe,
   refreshTokens,
 } from '../api/authApi';
 import { signInWithKakao } from '../api/kakaoAuthApi';
@@ -50,12 +50,6 @@ async function clearStoredAuth() {
     await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
   } catch {
     // 저장소 정리 실패는 다음 로그인 시 덮어쓴다.
-  }
-}
-
-function assertAuthResponse(authResponse) {
-  if (!authResponse?.accessToken || !authResponse?.refreshToken || !authResponse?.user) {
-    throw new Error('로그인 응답을 확인할 수 없습니다.');
   }
 }
 
@@ -144,24 +138,37 @@ export function AuthProvider({ children }) {
   }, [applyAuth]);
 
   const loginWithKakao = useCallback(async () => {
-    const authCode = await signInWithKakao();
+    // 서버가 카카오 인증부터 JWT 발급까지 처리하고
+    // 딥링크로 토큰만 돌려준다. 사용자 정보는 포함되지 않는다.
+    const tokens = await signInWithKakao();
 
-    if (!authCode?.code) {
-      return null;
+    // fetchMe 가 Authorization 헤더를 붙일 수 있도록 ref 를 먼저 채운다.
+    // applyAuth 는 user 가 있어야 호출할 수 있어서 순서를 나눴다.
+    syncTokenRefs(tokens.accessToken, tokens.refreshToken);
+
+    let user;
+
+    try {
+      user = await fetchMe();
+    } catch (error) {
+      syncTokenRefs(null, null);
+      throw error;
     }
 
-    const authResponse = await loginWithKakaoCode(authCode);
-    assertAuthResponse(authResponse);
+    if (!user) {
+      syncTokenRefs(null, null);
+      throw new Error('로그인 응답을 확인할 수 없습니다.');
+    }
 
     return applyAuth({
-      accessToken: authResponse?.accessToken,
-      refreshToken: authResponse?.refreshToken,
-      isNewUser: authResponse?.isNewUser,
-      isOnboarded: authResponse?.isOnboarded,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      isNewUser: tokens.isNewUser,
+      isOnboarded: tokens.isOnboarded,
       provider: 'kakao',
-      user: authResponse?.user,
+      user,
     });
-  }, [applyAuth]);
+  }, [applyAuth, syncTokenRefs]);
 
   const completeOnboarding = useCallback(
     async (nickname, generationTag) => {
