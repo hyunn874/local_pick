@@ -38,6 +38,10 @@ localpick:
 
 server:
   port: ${PORT:8080}            # Render 가 PORT 환경변수로 포트를 지정한다
+  tomcat:
+    threads:
+      max: 20                   # 무료 512MB 인스턴스에서 스레드 스택 메모리 절약
+      min-spare: 2
 
 logging:
   level:
