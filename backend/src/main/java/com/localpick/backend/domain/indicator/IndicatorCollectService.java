@@ -51,7 +51,7 @@ public class IndicatorCollectService {
      */
     public CollectResult collectMonth(YearMonth month) {
         LocalDate baseYm = MonthlyRegionIndicator.toBaseYm(month);
-        log.info("[IndicatorCollect] {} 수집 시작 (예상 호출 171회)", month);
+        log.info("[IndicatorCollect] {} 수집 시작 — baseYm={}, 예상 호출 171회", month, baseYm);
 
         Map<String, Double> outsiderRatio = fetchStay(month, StayIntensityItem.IX_OUTSIDER_RATIO);
         Map<String, Double> lodgingRatio = fetchStay(month, StayIntensityItem.IX_LODGING_RATIO);

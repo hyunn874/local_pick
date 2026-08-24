@@ -19,7 +19,9 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 ENV SPRING_PROFILES_ACTIVE=prod
 ENV TZ=Asia/Seoul
 # Render 무료 인스턴스는 메모리가 512MB 라 힙을 제한한다.
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=70 -XX:+UseSerialGC"
+# 힙 50%(≈256MB) + Tomcat 20스레드 × 512KB 스택 + Metaspace ≈ 330MB 로
+# OOM 마진을 확보한다. SerialGC 는 힙이 작을 때 오버헤드가 가장 낮다.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=50 -XX:InitialRAMPercentage=50 -Xss512k -XX:+UseSerialGC"
 
 EXPOSE 8080
 

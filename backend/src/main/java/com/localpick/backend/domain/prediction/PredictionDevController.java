@@ -17,24 +17,34 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class PredictionDevController {
 
-    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyyMM");
+    /** yyyy-MM, yyyyMM 둘 다 허용한다 */
+    private static final DateTimeFormatter YM = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final DateTimeFormatter YM_COMPACT = DateTimeFormatter.ofPattern("yyyyMM");
 
     private final IndicatorCollectService indicatorCollectService;
     private final PredictionService predictionService;
 
     /**
-     * POST /api/dev/indicators/collect?ym=202104
+     * POST /api/dev/indicators/collect?month=2021-05   (yyyy-MM)
+     * POST /api/dev/indicators/collect?month=202105    (yyyyMM, 하위호환)
      * 수요 강도·다양성 월간 지표 수집. 호출이 171회라 수 분 걸린다.
      */
     @PostMapping("/indicators/collect")
     public ApiResponse<IndicatorCollectService.CollectResult> collectIndicators(
-            @RequestParam(required = false) String ym) {
+            @RequestParam(required = false) String month) {
 
-        YearMonth month = (ym != null && !ym.isBlank())
-                ? YearMonth.parse(ym, YM)
-                : YearMonth.now().minusMonths(3);   // 공사 월간 지표는 두세 달 지연 공개된다
+        YearMonth ym = parseMonth(month);
+        return ApiResponse.ok(indicatorCollectService.collectMonth(ym));
+    }
 
-        return ApiResponse.ok(indicatorCollectService.collectMonth(month));
+    private YearMonth parseMonth(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return YearMonth.now().minusMonths(3);   // 공사 월간 지표는 두세 달 지연 공개된다
+        }
+        // yyyy-MM 형식이면 하이픈 포함, yyyyMM 이면 6자리
+        return raw.contains("-")
+                ? YearMonth.parse(raw, YM)
+                : YearMonth.parse(raw, YM_COMPACT);
     }
 
     /**
