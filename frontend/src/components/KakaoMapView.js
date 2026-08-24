@@ -1,81 +1,137 @@
-import { StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-import { kakaoConfig } from '../api/kakaoConfig';
-import { createKakaoMapHtml } from '../api/kakaoMapApi';
-import { colors } from '../constants/colors';
+const { height } = Dimensions.get('window');
 
-const DEFAULT_LATITUDE = 37.5665;
-const DEFAULT_LONGITUDE = 126.978;
-
-export default function KakaoMapView({
-  latitude = DEFAULT_LATITUDE,
-  longitude = DEFAULT_LONGITUDE,
+const KakaoMapView = ({
+  latitude = 36.3504,
+  longitude = 127.3845,
   markers = [],
-  onMarkerPress = null,
-}) {
-  if (!kakaoConfig.javascriptKey) {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>카카오맵 JavaScript 키가 필요합니다.</Text>
-        <Text style={styles.emptyDescription}>
-          app.json의 expo.extra.kakao.javascriptKey에 키를 설정하면 지도 WebView가 표시됩니다.
-        </Text>
-      </View>
-    );
-  }
+  onMarkerPress,
+  style,
+}) => {
+  const KAKAO_JS_KEY = process.env.EXPO_PUBLIC_KAKAO_JAVASCRIPT_KEY;
+
+  const generateMarkerJS = (nextMarkers) => {
+    return nextMarkers.map((marker, index) => `
+      var marker${index} = new kakao.maps.Marker({
+        map: map,
+        position: new kakao.maps.LatLng(${marker.latitude}, ${marker.longitude}),
+        title: '${marker.title}'
+      });
+      kakao.maps.event.addListener(marker${index}, 'click', function() {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          id: ${marker.id},
+          title: '${marker.title}',
+          category: '${marker.category}',
+          latitude: ${marker.latitude},
+          longitude: ${marker.longitude}
+        }));
+      });
+    `).join('\n');
+  };
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        #map { width: 100%; height: 100%; }
+        #error {
+          display: none;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          text-align: center;
+          font-family: sans-serif;
+          color: #666;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <div id="error">
+        <p style="font-size:16px;font-weight:bold;color:#333">
+          카카오맵을 표시할 수 없어요
+        </p>
+        <p style="font-size:13px;margin-top:8px">
+          네트워크 연결을 확인해주세요
+        </p>
+      </div>
+      <script>
+        function onKakaoMapError() {
+          document.getElementById('map').style.display = 'none';
+          document.getElementById('error').style.display = 'block';
+        }
+
+        function initMap() {
+          try {
+            var container = document.getElementById('map');
+            var options = {
+              center: new kakao.maps.LatLng(${latitude}, ${longitude}),
+              level: 5
+            };
+            var map = new kakao.maps.Map(container, options);
+
+            ${generateMarkerJS(markers)}
+
+          } catch(e) {
+            onKakaoMapError();
+          }
+        }
+      </script>
+      <script
+        src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false"
+        onload="kakao.maps.load(initMap)"
+        onerror="onKakaoMapError()">
+      </script>
+    </body>
+    </html>
+  `;
 
   const handleMessage = (event) => {
-    if (!onMarkerPress) {
-      return;
-    }
-
     try {
-      onMarkerPress(JSON.parse(event.nativeEvent.data));
-    } catch {
-      // Ignore malformed WebView messages from non-map sources.
-    }
+      const data = JSON.parse(event.nativeEvent.data);
+      if (onMarkerPress) onMarkerPress(data);
+    } catch (e) {}
   };
 
   return (
-    <WebView
-      onMessage={handleMessage}
-      originWhitelist={['*']}
-      source={{
-        html: createKakaoMapHtml({
-          javascriptKey: kakaoConfig.javascriptKey,
-          latitude,
-          longitude,
-          markers,
-        }),
-      }}
-      style={styles.webView}
-    />
+    <View style={[styles.container, style]}>
+      <WebView
+        source={{ html }}
+        style={styles.webview}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        originWhitelist={['*']}
+        mixedContentMode="always"
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        onMessage={handleMessage}
+        scrollEnabled={false}
+        bounces={false}
+      />
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  webView: {
+  container: {
+    width: '100%',
+    height: height * 0.45,
+    overflow: 'hidden',
+  },
+  webview: {
     flex: 1,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 24,
-    backgroundColor: colors.surface,
-  },
-  emptyTitle: {
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  emptyDescription: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
+    backgroundColor: '#f0f0f0',
   },
 });
+
+export default KakaoMapView;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
   RefreshControl,
@@ -31,16 +32,22 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 
-function EarningMethodItem({ method }) {
+function EarningMethodItem({ method, onPress }) {
+  const isCompleted = method.id === 'signup';
   const handlePress = () => {
+    if (isCompleted) {
+      return;
+    }
+
     void Haptics.selectionAsync();
-    Alert.alert(method.alertTitle, method.alertMessage);
+    onPress(method);
   };
 
   return (
     <TouchableOpacity
-      style={styles.methodItem}
+      style={[styles.methodItem, isCompleted && styles.completedMethodItem]}
       activeOpacity={0.7}
+      disabled={isCompleted}
       onPress={handlePress}
     >
       <View style={styles.methodIcon}>
@@ -51,7 +58,9 @@ function EarningMethodItem({ method }) {
         <Text style={styles.methodDescription}>{method.description}</Text>
       </View>
       <View style={styles.rewardBadge}>
-        <Text style={styles.rewardBadgeText}>{method.reward}</Text>
+        <Text style={styles.rewardBadgeText}>
+          {isCompleted ? '지급됨' : method.reward}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -70,6 +79,36 @@ function UsageHistoryItem({ item }) {
 }
 
 export default function LocalPassScreen() {
+  const { isGuest } = useAuth();
+
+  if (isGuest) {
+    return <GuestLocalPassScreen />;
+  }
+
+  return <AuthenticatedLocalPassScreen />;
+}
+
+function GuestLocalPassScreen() {
+  const { exitGuestMode } = useAuth();
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.guestEmptyState}>
+        <Text style={styles.guestLockIcon}>🔒</Text>
+        <Text style={styles.guestEmptyTitle}>로그인이 필요한 서비스예요</Text>
+        <TouchableOpacity
+          style={styles.guestLoginButton}
+          activeOpacity={0.7}
+          onPress={exitGuestMode}
+        >
+          <Text style={styles.guestLoginButtonText}>로그인하기</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function AuthenticatedLocalPassScreen() {
   const { logout, user } = useAuth();
   const navigation = useNavigation();
   const passCountAnimation = useSharedValue(0);
@@ -127,8 +166,16 @@ export default function LocalPassScreen() {
     Alert.alert('패스 사용', '지도에서 타지역 명소를 열람할 수 있어요!');
   };
 
-  const handleShowRegion = () => {
-    Alert.alert('내 지역', `현재 거주 지역: ${regionName}`);
+  const handleOpenSettings = () => {
+    navigation.navigate('Settings');
+  };
+
+  const handleShowPassHistory = () => {
+    navigation.navigate('PassHistory');
+  };
+
+  const handleEarningMethodPress = (method) => {
+    navigation.navigate('ChatRoom');
   };
 
   const handleLogout = () => {
@@ -165,11 +212,13 @@ export default function LocalPassScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>내 로컬패스</Text>
           <TouchableOpacity
-            style={styles.locationButton}
+            style={styles.settingsButton}
             activeOpacity={0.7}
-            onPress={handleShowRegion}
+            accessibilityRole="button"
+            accessibilityLabel="설정"
+            onPress={handleOpenSettings}
           >
-            <Text style={styles.locationIcon}>📍</Text>
+            <Ionicons name="settings-outline" size={24} color={MAIN_GREEN} />
           </TouchableOpacity>
         </View>
 
@@ -219,7 +268,11 @@ export default function LocalPassScreen() {
           <Text style={styles.sectionTitle}>로컬패스 획득 방법</Text>
           <View style={styles.methodList}>
             {earningMethods.map((method) => (
-              <EarningMethodItem key={method.id} method={method} />
+              <EarningMethodItem
+                key={method.id}
+                method={method}
+                onPress={handleEarningMethodPress}
+              />
             ))}
           </View>
         </View>
@@ -252,7 +305,7 @@ export default function LocalPassScreen() {
           <Text style={styles.sectionTitle}>사용 내역</Text>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => Alert.alert('사용 내역', '전체 내역 화면은 준비 중이에요!')}
+            onPress={handleShowPassHistory}
           >
             <Text style={styles.sectionLink}>전체보기 &gt;</Text>
           </TouchableOpacity>
@@ -304,16 +357,42 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '900',
   },
-  locationButton: {
+  guestEmptyState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  guestLockIcon: {
+    fontSize: 44,
+    marginBottom: 16,
+  },
+  guestEmptyTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 18,
+  },
+  guestLoginButton: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    height: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  guestLoginButtonText: {
+    color: CARD,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  settingsButton: {
     alignItems: 'center',
     backgroundColor: CARD,
     borderRadius: 22,
     height: 44,
     justifyContent: 'center',
     width: 44,
-  },
-  locationIcon: {
-    fontSize: 19,
   },
   profileCard: {
     backgroundColor: CARD,
@@ -436,6 +515,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     paddingVertical: 14,
+  },
+  completedMethodItem: {
+    opacity: 0.65,
   },
   methodIcon: {
     alignItems: 'center',

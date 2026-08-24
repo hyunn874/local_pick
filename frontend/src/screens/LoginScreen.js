@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedStyle,
@@ -10,13 +20,16 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { appleLogin } from '../api/appleApi';
 import { useAuth } from '../contexts/AuthContext';
 
 const KAKAO_YELLOW = '#FEE500';
 const isKakaoLoginEnabled = process.env.EXPO_PUBLIC_ENABLE_KAKAO_LOGIN === 'true';
 
-export default function LoginScreen() {
-  const { devLogin, loginWithKakao } = useAuth();
+export default function LoginScreen({ navigation: navigationProp }) {
+  const fallbackNavigation = useNavigation();
+  const navigation = navigationProp ?? fallbackNavigation;
+  const { devLogin, loginWithKakao, startGuestMode } = useAuth();
   const iconAnimation = useSharedValue(0);
   const copyAnimation = useSharedValue(0);
   const buttonAnimation = useSharedValue(0);
@@ -82,6 +95,27 @@ export default function LoginScreen() {
     void handleLogin(devLogin);
   };
 
+  const handleStartGuestMode = () => {
+    startGuestMode();
+  };
+
+  const handleAppleLogin = async () => {
+    try {
+      await appleLogin();
+      Alert.alert('로그인 성공', '애플 계정으로 로그인됐어요!');
+    } catch (error) {
+      Alert.alert('로그인 실패', error.message);
+    }
+  };
+
+  const handleOpenTerms = () => {
+    navigation.navigate('Terms');
+  };
+
+  const handleOpenPrivacyPolicy = () => {
+    navigation.navigate('PrivacyPolicy');
+  };
+
   return (
     <LinearGradient colors={['#1E3A2F', '#2D5C44']} style={styles.gradient}>
       <SafeAreaView style={styles.safeArea}>
@@ -119,6 +153,22 @@ export default function LoginScreen() {
               </Text>
             )}
           </TouchableOpacity>
+          {Platform.OS === 'ios' && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={16}
+              style={styles.appleButton}
+              onPress={handleAppleLogin}
+            />
+          )}
+          <TouchableOpacity
+            style={styles.guestButton}
+            activeOpacity={0.7}
+            onPress={handleStartGuestMode}
+          >
+            <Text style={styles.guestButtonText}>로그인 없이 둘러보기</Text>
+          </TouchableOpacity>
           {__DEV__ && (
             <TouchableOpacity
               style={styles.devButton}
@@ -129,9 +179,17 @@ export default function LoginScreen() {
               <Text style={styles.devButtonText}>개발용으로 시작하기</Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.termsText}>
-            시작하면 이용약관 및 개인정보처리방침에 동의합니다
-          </Text>
+          <View style={styles.termsRow}>
+            <Text style={styles.termsText}>시작하면 </Text>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleOpenTerms}>
+              <Text style={styles.termsLinkText}>이용약관</Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}> 및 </Text>
+            <TouchableOpacity activeOpacity={0.7} onPress={handleOpenPrivacyPolicy}>
+              <Text style={styles.termsLinkText}>개인정보처리방침</Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}>에 동의합니다</Text>
+          </View>
         </Animated.View>
       </SafeAreaView>
     </LinearGradient>
@@ -219,6 +277,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  appleButton: {
+    height: 56,
+    marginHorizontal: 24,
+    marginTop: 12,
+  },
+  guestButton: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  guestButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    opacity: 0.7,
+    textDecorationLine: 'underline',
+  },
   devButton: {
     alignItems: 'center',
     borderColor: 'rgba(255,255,255,0.4)',
@@ -234,12 +308,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  termsRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingHorizontal: 24,
+  },
   termsText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '500',
-    marginTop: 16,
     opacity: 0.5,
     textAlign: 'center',
+  },
+  termsLinkText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
 });
