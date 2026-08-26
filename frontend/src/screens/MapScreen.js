@@ -215,6 +215,7 @@ export default function MapScreen() {
   const [selectedPin, setSelectedPin] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
+  const [localPassBalance, setLocalPassBalance] = useState(3);
   const { regions } = useRegions();
 
   const normalizedSearchText = searchText.trim().toLowerCase();
@@ -329,7 +330,30 @@ export default function MapScreen() {
       return;
     }
 
-    Alert.alert('패스 사용', '로컬패스 1개를 사용했어요!');
+    if (localPassBalance <= 0) {
+      Alert.alert(
+        '로컬패스 부족',
+        '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
+      );
+      return;
+    }
+
+    const selectedPlaceName = selectedPin?.name || selectedPin?.title || '선택한 장소';
+
+    Alert.alert(
+      '장소 열람',
+      `${selectedPlaceName}을 열람하기 위해 로컬패스 1개를 사용해요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '사용하기',
+          onPress: () => {
+            setLocalPassBalance((current) => Math.max(0, current - 1));
+            Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+          },
+        },
+      ],
+    );
   };
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({

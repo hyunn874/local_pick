@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -11,13 +13,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 
 import { useAuth } from '../contexts/AuthContext';
 import { initialPosts } from '../mocks/chatRoomMockData';
+import { getPostCommentCounts } from '../state/postCommentCounts';
+import { setMyPostProgress } from '../state/myPostProgress';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -25,8 +30,23 @@ const CARD = '#FFFFFF';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
+const AGE_TAGS = ['20대', '30-40대', '50대+'];
+const TARGET_LIKES = 30;
+
+function writeOngoingPick(post) {
+  setMyPostProgress({
+    title: post.title,
+    progress: post.progress ?? 0,
+    likes: post.likes ?? 0,
+    targetLikes: post.targetLikes ?? TARGET_LIKES,
+  });
+}
 
 function PostCard({ post, onPress, onShare, onToggleLike }) {
+  const imageSource = post.imageUrl || post.image;
+  const generationTag = post.generationTag || post.ageTag || '전체';
+  const isLiked = post.likedByMe ?? post.isLiked;
+
   return (
     <TouchableOpacity style={styles.postCard} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.postHeader}>
@@ -44,16 +64,22 @@ function PostCard({ post, onPress, onShare, onToggleLike }) {
         </View>
       </View>
 
-      <Image
-        source={{ uri: post.imageUrl }}
-        style={styles.postImage}
-        contentFit="cover"
-        transition={300}
-      />
+      {imageSource ? (
+        <Image
+          source={{ uri: imageSource }}
+          style={styles.postImage}
+          contentFit="cover"
+          transition={300}
+        />
+      ) : (
+        <View style={styles.postImagePlaceholder}>
+          <Text style={styles.postImagePlaceholderText}>이미지 없음</Text>
+        </View>
+      )}
 
       <View style={styles.tagRow}>
         <View style={styles.generationTag}>
-          <Text style={styles.generationTagText}>{post.generationTag}</Text>
+          <Text style={styles.generationTagText}>{generationTag}</Text>
         </View>
         <View style={styles.categoryTag}>
           <Text style={styles.categoryTagText}>{post.categoryTag}</Text>
@@ -75,8 +101,8 @@ function PostCard({ post, onPress, onShare, onToggleLike }) {
 
       <View style={styles.postActions}>
         <TouchableOpacity activeOpacity={0.7} onPress={onToggleLike}>
-          <Text style={[styles.actionText, post.likedByMe && styles.likedText]}>
-            {post.likedByMe ? '♥' : '♡'} {post.likes}
+          <Text style={[styles.actionText, isLiked && styles.likedText]}>
+            {isLiked ? '♥' : '♡'} {post.likes}
           </Text>
         </TouchableOpacity>
         <Text style={styles.actionText}>댓글 {post.comments}</Text>
@@ -96,6 +122,9 @@ export default function ChatRoomScreen() {
   const refreshTimeoutRef = useRef(null);
   const [posts, setPosts] = useState(initialPosts);
   const [message, setMessage] = useState('');
+  const [selectedAgeTag, setSelectedAgeTag] = useState('전체');
+  const [selectedCategory] = useState('기타');
+  const [selectedImageUri, setSelectedImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -117,6 +146,27 @@ export default function ChatRoomScreen() {
       }
     };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const commentCounts = getPostCommentCounts();
+
+      setPosts((currentPosts) =>
+        currentPosts.map((post) => {
+          const nextCommentCount = commentCounts[String(post.id)];
+
+          if (nextCommentCount === undefined) {
+            return post;
+          }
+
+          return {
+            ...post,
+            comments: nextCommentCount,
+          };
+        }),
+      );
+    }, []),
+  );
 
   const handlePostPress = (post) => {
     navigation.navigate('PostDetail', { post });
@@ -144,15 +194,47 @@ export default function ChatRoomScreen() {
           return post;
         }
 
-        const nextLikedByMe = !post.likedByMe;
+        const nextLikedByMe = !(post.likedByMe ?? post.isLiked);
 
-        return {
+        const nextLikes = post.likes + (nextLikedByMe ? 1 : -1);
+        const nextPost = {
           ...post,
           likedByMe: nextLikedByMe,
-          likes: post.likes + (nextLikedByMe ? 1 : -1),
+          isLiked: nextLikedByMe,
+          likes: nextLikes,
+          progress: Math.min(
+            100,
+            Math.round((nextLikes / (post.targetLikes ?? TARGET_LIKES)) * 100),
+          ),
         };
+
+        if (nextPost.isMine) {
+          writeOngoingPick(nextPost);
+        }
+
+        return nextPost;
       }),
     );
+  };
+
+  const handlePickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('권한 필요', '이미지를 첨부하려면 사진 접근 권한이 필요해요.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setSelectedImageUri(result.assets[0].uri);
+    }
   };
 
   const handleSend = () => {
@@ -160,23 +242,32 @@ export default function ChatRoomScreen() {
       return;
     }
 
-    const nextPost = {
-      id: `post-${Date.now()}`,
-      author: user?.nickname || '로컬픽 사용자',
+    const inputText = message.trim();
+    const newPost = {
+      id: Date.now(),
+      author: user?.nickname || '나',
+      isResident: true,
       time: '방금 전',
-      generationTag: '내 추천',
-      categoryTag: '명소',
-      imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
-      title: message.trim(),
-      content: message.trim(),
-      progress: 12,
+      image: selectedImageUri,
+      imageUrl: selectedImageUri,
+      ageTag: selectedAgeTag || '전체',
+      generationTag: selectedAgeTag || '전체',
+      categoryTag: selectedCategory || '기타',
+      title: inputText,
+      content: inputText,
+      progress: 0,
       likes: 0,
-      likedByMe: false,
       comments: 0,
+      targetLikes: TARGET_LIKES,
+      isMine: true,
+      isLiked: false,
+      likedByMe: false,
     };
 
-    setPosts((currentPosts) => [nextPost, ...currentPosts]);
+    setPosts((currentPosts) => [newPost, ...currentPosts]);
+    writeOngoingPick(newPost);
     setMessage('');
+    setSelectedImageUri(null);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -287,21 +378,64 @@ export default function ChatRoomScreen() {
         </ScrollView>
 
         <View style={styles.composer}>
-          <TextInput
-            ref={inputRef}
-            style={styles.input}
-            value={message}
-            onChangeText={setMessage}
-            placeholder="내 동네 명소를 공유해보세요..."
-            placeholderTextColor="#9B9F98"
-          />
-          <TouchableOpacity
-            style={[styles.sendButton, !message.trim() && styles.disabledSendButton]}
-            activeOpacity={0.7}
-            onPress={handleSend}
-          >
-            <Text style={styles.sendButtonText}>↑</Text>
-          </TouchableOpacity>
+          <View style={styles.ageTagRow}>
+            {AGE_TAGS.map((ageTag) => {
+              const isSelected = selectedAgeTag === ageTag;
+
+              return (
+                <TouchableOpacity
+                  key={ageTag}
+                  style={[styles.ageTagButton, isSelected && styles.selectedAgeTagButton]}
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedAgeTag(ageTag)}
+                >
+                  <Text style={[styles.ageTagText, isSelected && styles.selectedAgeTagText]}>
+                    {ageTag}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {selectedImageUri && (
+            <View style={styles.imagePreviewWrap}>
+              <Image
+                source={{ uri: selectedImageUri }}
+                style={styles.imagePreview}
+                contentFit="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                activeOpacity={0.7}
+                onPress={() => setSelectedImageUri(null)}
+              >
+                <Text style={styles.removeImageButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <View style={styles.composerInputRow}>
+            <TouchableOpacity
+              style={styles.attachButton}
+              activeOpacity={0.7}
+              onPress={handlePickImage}
+            >
+              <Ionicons name="camera-outline" size={24} color={MAIN_GREEN} />
+            </TouchableOpacity>
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              value={message}
+              onChangeText={setMessage}
+              placeholder="내 동네 명소를 공유해보세요..."
+              placeholderTextColor="#9B9F98"
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, !message.trim() && styles.disabledSendButton]}
+              activeOpacity={0.7}
+              onPress={handleSend}
+            >
+              <Text style={styles.sendButtonText}>↑</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -450,6 +584,19 @@ const styles = StyleSheet.create({
     height: 150,
     marginTop: 14,
   },
+  postImagePlaceholder: {
+    alignItems: 'center',
+    backgroundColor: '#E8F0EB',
+    borderRadius: 8,
+    height: 150,
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  postImagePlaceholderText: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   tagRow: {
     flexDirection: 'row',
     gap: 7,
@@ -574,14 +721,78 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   composer: {
-    alignItems: 'center',
     backgroundColor: CARD,
     borderTopColor: BORDER,
     borderTopWidth: 1,
-    flexDirection: 'row',
     gap: 10,
     paddingHorizontal: 20,
     paddingVertical: 12,
+  },
+  ageTagRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ageTagButton: {
+    alignItems: 'center',
+    backgroundColor: BACKGROUND,
+    borderColor: BORDER,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    height: 34,
+    justifyContent: 'center',
+  },
+  selectedAgeTagButton: {
+    backgroundColor: MAIN_GREEN,
+    borderColor: MAIN_GREEN,
+  },
+  ageTagText: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  selectedAgeTagText: {
+    color: CARD,
+  },
+  composerInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  imagePreviewWrap: {
+    alignSelf: 'flex-start',
+    position: 'relative',
+  },
+  imagePreview: {
+    backgroundColor: '#E8F0EB',
+    borderRadius: 8,
+    height: 76,
+    width: 102,
+  },
+  removeImageButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 11,
+    height: 22,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: -7,
+    top: -7,
+    width: 22,
+  },
+  removeImageButtonText: {
+    color: CARD,
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
+  attachButton: {
+    alignItems: 'center',
+    backgroundColor: BACKGROUND,
+    borderRadius: 22,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   input: {
     backgroundColor: BACKGROUND,
