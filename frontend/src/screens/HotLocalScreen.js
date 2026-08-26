@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fetchDevVisitorHotLocals, fetchWeeklyHotLocals } from '../api/predictionApi';
+import { useAuth } from '../contexts/AuthContext';
 import { hotLocalData } from '../mocks/hotLocalMockData';
 
 const MAIN_GREEN = '#2D5C44';
@@ -69,6 +70,7 @@ function SmallRankCard({ item, onPress }) {
 
 export default function HotLocalScreen() {
   const navigation = useNavigation();
+  const { exitGuestMode, isGuest } = useAuth();
   const fadeAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
   const [weeklyHotLocalData, setWeeklyHotLocalData] = useState(hotLocalData);
@@ -139,6 +141,26 @@ export default function HotLocalScreen() {
 
   const handleSmallRankPress = (item) => {
     Alert.alert(item.region, `${item.visitor} · ${item.diversity}`);
+  };
+
+  const handleChatPress = () => {
+    if (isGuest) {
+      Alert.alert(
+        '로그인이 필요해요',
+        '소통방은 로그인 후 이용할 수 있어요.',
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '로그인하기',
+            style: 'default',
+            onPress: exitGuestMode,
+          },
+        ],
+      );
+      return;
+    }
+
+    navigation.navigate('ChatRoom');
   };
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
@@ -222,7 +244,7 @@ export default function HotLocalScreen() {
             <TouchableOpacity
               style={styles.chatButton}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('ChatRoom')}
+              onPress={handleChatPress}
             >
               <Text style={styles.chatButtonText}>이 지역 소통방 바로가기 →</Text>
             </TouchableOpacity>

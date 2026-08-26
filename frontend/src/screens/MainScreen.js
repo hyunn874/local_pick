@@ -146,21 +146,6 @@ export default function MainScreen() {
           />
         }
       >
-        {isGuest && (
-          <View style={styles.guestBanner}>
-            <Text style={styles.guestBannerText}>
-              로그인하면 소통방과 로컬패스를 이용할 수 있어요
-            </Text>
-            <TouchableOpacity
-              style={styles.guestLoginButton}
-              activeOpacity={0.7}
-              onPress={handleLoginPress}
-            >
-              <Text style={styles.guestLoginButtonText}>로그인</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         <View style={styles.header}>
           <View style={styles.logoGroup}>
             <View style={styles.logoIcon}>
@@ -179,6 +164,21 @@ export default function MainScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {isGuest && (
+          <View style={styles.guestBanner}>
+            <Text style={styles.guestBannerText} numberOfLines={1}>
+              로그인하면 소통방과 로컬패스를 이용할 수 있어요
+            </Text>
+            <TouchableOpacity
+              style={styles.guestLoginButton}
+              activeOpacity={0.7}
+              onPress={handleLoginPress}
+            >
+              <Text style={styles.guestLoginButtonText}>로그인</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>이 주의 발굴 지역</Text>
@@ -301,37 +301,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 32,
   },
-  guestBanner: {
-    alignItems: 'center',
-    backgroundColor: MAIN_GREEN,
-    borderRadius: 8,
-    flexDirection: 'row',
-    gap: 10,
-    height: 44,
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  guestBannerText: {
-    color: '#FFFFFF',
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  guestLoginButton: {
-    alignItems: 'center',
-    borderColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 30,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  guestLoginButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '900',
-  },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -366,6 +335,37 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 44,
+  },
+  guestBanner: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 10,
+    height: 44,
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    paddingHorizontal: 12,
+  },
+  guestBannerText: {
+    color: CARD,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  guestLoginButton: {
+    alignItems: 'center',
+    borderColor: CARD,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  guestLoginButtonText: {
+    color: CARD,
+    fontSize: 13,
+    fontWeight: '900',
   },
   notificationIconWrap: {
     alignItems: 'center',

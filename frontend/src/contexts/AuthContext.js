@@ -7,6 +7,7 @@ import {
   fetchMe,
   refreshTokens,
 } from '../api/authApi';
+import { signInWithApple } from '../api/appleApi';
 import { signInWithKakao } from '../api/kakaoAuthApi';
 
 const AUTH_STORAGE_KEY = 'localpick.auth';
@@ -181,6 +182,27 @@ export function AuthProvider({ children }) {
     });
   }, [applyAuth, syncTokenRefs]);
 
+  const loginWithApple = useCallback(async () => {
+    try {
+      const credential = await signInWithApple();
+      const identityToken = credential.identityToken;
+
+      if (!identityToken) {
+        throw new Error('Apple identity token을 받지 못했어요.');
+      }
+
+      // 백엔드 Apple 로그인 API 연동 전까지 임시로 개발용 로그인과 동일하게 처리한다.
+      console.log('Apple identityToken:', identityToken);
+      await devLogin();
+    } catch (error) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+
+      throw error;
+    }
+  }, [devLogin]);
+
   const completeOnboarding = useCallback(
     async (nickname, generationTag) => {
       const nextUser = await completeOnboardingApi({ nickname, generationTag });
@@ -262,6 +284,7 @@ export function AuthProvider({ children }) {
       completeOnboarding,
       devLogin,
       exitGuestMode,
+      loginWithApple,
       loginWithKakao,
       logout,
       startGuestMode,
@@ -274,6 +297,7 @@ export function AuthProvider({ children }) {
       isGuest,
       isInitializing,
       isOnboarded,
+      loginWithApple,
       loginWithKakao,
       logout,
       refreshToken,
