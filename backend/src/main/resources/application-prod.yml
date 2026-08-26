@@ -10,6 +10,10 @@
 #   KAKAO_CLIENT_SECRET : 카카오 클라이언트 시크릿 (콘솔에서 "사용함" 설정 시 필수)
 #   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.onrender.com/api/auth/kakao/callback)
 spring:
+  main:
+    lazy-initialization: true   # Bean 을 기동 시 한꺼번에 올리지 않고 첫 요청 시 생성
+    banner-mode: off
+    log-startup-info: false
   datasource:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
@@ -17,6 +21,8 @@ spring:
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 5      # Render 무료 Postgres 커넥션 제한 대응
+      minimum-idle: 0           # 기동 시 커넥션을 안 잡고 요청이 올 때 생성
+      idle-timeout: 60000
   jpa:
     hibernate:
       # 초기 배포에는 update 로 스키마를 생성한다.
@@ -25,6 +31,8 @@ spring:
     properties:
       hibernate:
         default_batch_fetch_size: 100
+        temp:
+          use_jdbc_metadata_defaults: false
     open-in-view: false
 
 localpick:
