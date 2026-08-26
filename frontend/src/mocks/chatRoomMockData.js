@@ -12,7 +12,7 @@ export const initialPosts = [
     progress: 72,
     likes: 48,
     likedByMe: false,
-    comments: 12,
+    comments: 2,
   },
   {
     id: 'post-2',
@@ -27,6 +27,6 @@ export const initialPosts = [
     progress: 58,
     likes: 31,
     likedByMe: false,
-    comments: 8,
+    comments: 2,
   },
 ];
