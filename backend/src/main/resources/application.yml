@@ -31,6 +31,8 @@ localpick:
     service-key: ${KTO_SERVICE_KEY:}
   mois:
     service-key: ${MOIS_SERVICE_KEY:}
+  apple:
+    bundle-id: ${APPLE_BUNDLE_ID:com.localpick.app}
   kakao:
     rest-api-key: ${KAKAO_REST_API_KEY:}
     client-secret: ${KAKAO_CLIENT_SECRET:}

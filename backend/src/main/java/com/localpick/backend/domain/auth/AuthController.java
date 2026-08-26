@@ -37,6 +37,16 @@ public class AuthController {
     }
 
     /**
+     * Apple 로그인.
+     * 앱에서 Apple Sign In SDK 가 반환한 identityToken 을 검증하고 자체 JWT 를 발급한다.
+     */
+    @PostMapping("/apple")
+    public ApiResponse<AuthResponse> loginWithApple(
+            @Valid @RequestBody AppleLoginRequest request) {
+        return ApiResponse.ok(authService.loginWithApple(request));
+    }
+
+    /**
      * 카카오 인증 시작 — 브라우저를 이 주소로 열면 카카오 로그인 화면으로 넘어간다.
      *
      * 카카오는 REST API 키 방식에서 http(s) 리다이렉트 URI 만 허용하므로

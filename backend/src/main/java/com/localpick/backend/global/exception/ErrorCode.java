@@ -16,6 +16,7 @@ public enum ErrorCode {
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "A002", "유효하지 않은 토큰입니다."),
     EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "A003", "토큰이 만료되었습니다. 다시 로그인해 주세요."),
     KAKAO_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "A004", "카카오 로그인에 실패했습니다."),
+    APPLE_AUTH_FAILED(HttpStatus.UNAUTHORIZED, "A006", "Apple 로그인에 실패했습니다."),
     ONBOARDING_REQUIRED(HttpStatus.FORBIDDEN, "A005", "닉네임과 세대 설정을 완료해 주세요."),
 
     // 회원
