@@ -32,6 +32,22 @@ const PLACEHOLDER_GRAY = '#E0E0E0';
 const FEATURE_CARD_HEIGHT = 224;
 const CANDIDATE_CARD_WIDTH = Dimensions.get('window').width * 0.75;
 
+function getResidenceName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '내 동네';
+}
+
+function getAdoptedPlaceRegionName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '서울 은평구';
+}
+
 export default function MainScreen() {
   const { exitGuestMode, isGuest, user } = useAuth();
   const navigation = useNavigation();
@@ -41,7 +57,16 @@ export default function MainScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasNotification, setHasNotification] = useState(true);
   const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
-  const userRegionName = user?.region?.fullName || '대전광역시 유성구';
+  const userRegionName = getResidenceName(user);
+  const adoptedPlaceRegionName = getAdoptedPlaceRegionName(user);
+  const residenceAdoptedPlaces = useMemo(
+    () =>
+      adoptedPlaces.map((place) => ({
+        ...place,
+        region: adoptedPlaceRegionName,
+      })),
+    [adoptedPlaceRegionName],
+  );
   const regionCandidateItems = useMemo(() => {
     const candidates = regions
       .filter((region) => region.fullName !== userRegionName)
@@ -248,13 +273,16 @@ export default function MainScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.blockTitle}>최근 채택된 명소</Text>
+          <View>
+            <Text style={styles.blockTitle}>최근 채택된 명소</Text>
+            <Text style={styles.sectionDescription}>{userRegionName}의 채택 명소</Text>
+          </View>
           <TouchableOpacity activeOpacity={0.7} onPress={handleShowAllPlaces}>
             <Text style={styles.sectionLink}>전체보기 &gt;</Text>
           </TouchableOpacity>
         </View>
 
-        {adoptedPlaces.length === 0 ? (
+        {residenceAdoptedPlaces.length === 0 ? (
           <View style={styles.emptyPlaces}>
             <Text style={styles.emptyPlacesText}>아직 채택된 명소가 없어요</Text>
             <TouchableOpacity
@@ -267,7 +295,7 @@ export default function MainScreen() {
           </View>
         ) : (
           <View style={styles.placeList}>
-            {adoptedPlaces.map((place) => (
+            {residenceAdoptedPlaces.map((place) => (
               <View key={place.id} style={styles.placeItem}>
                 <Image
                   source={{ uri: place.imageUrl }}
@@ -468,6 +496,12 @@ const styles = StyleSheet.create({
     color: '#17251D',
     fontSize: 18,
     fontWeight: '900',
+  },
+  sectionDescription: {
+    color: '#7A9B8A',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
   },
   candidateList: {
     gap: 12,

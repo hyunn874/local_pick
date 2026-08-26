@@ -24,6 +24,7 @@ import Animated, {
 import { useAuth } from '../contexts/AuthContext';
 import { earningMethods, localPassSummary, usageHistory } from '../mocks/localPassMockData';
 import { getMyPostProgress } from '../state/myPostProgress';
+import { getBalance, useBalance } from '../state/localPassStore';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -123,7 +124,9 @@ function AuthenticatedLocalPassScreen() {
   const passCountAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
-  const [localPassBalance, setLocalPassBalance] = useState(user?.localPassBalance ?? 3);
+  const [localPassBalance, setLocalPassBalance] = useBalance(
+    user?.localPassBalance ?? getBalance(),
+  );
   const [displayPassCount, setDisplayPassCount] = useState(0);
   const [ongoingPick, setOngoingPick] = useState(null);
   const [isPlaceModalVisible, setIsPlaceModalVisible] = useState(false);
@@ -201,7 +204,7 @@ function AuthenticatedLocalPassScreen() {
         {
           text: '사용하기',
           onPress: () => {
-            setLocalPassBalance((current) => Math.max(0, current - 1));
+            setLocalPassBalance(getBalance() - 1);
             setIsPlaceModalVisible(false);
             setUsageHistoryItems((currentItems) => [
               {
