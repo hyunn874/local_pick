@@ -20,3 +20,5 @@ export const appleLogin = async () => {
 export const isAppleAuthAvailable = async () => {
   return await AppleAuthentication.isAvailableAsync();
 };
+
+export const signInWithApple = appleLogin;

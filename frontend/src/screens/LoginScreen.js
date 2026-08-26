@@ -20,7 +20,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { appleLogin } from '../api/appleApi';
 import { useAuth } from '../contexts/AuthContext';
 
 const KAKAO_YELLOW = '#FEE500';
@@ -29,7 +28,7 @@ const isKakaoLoginEnabled = process.env.EXPO_PUBLIC_ENABLE_KAKAO_LOGIN === 'true
 export default function LoginScreen({ navigation: navigationProp }) {
   const fallbackNavigation = useNavigation();
   const navigation = navigationProp ?? fallbackNavigation;
-  const { devLogin, loginWithKakao, startGuestMode } = useAuth();
+  const { devLogin, loginWithApple, loginWithKakao, startGuestMode } = useAuth();
   const iconAnimation = useSharedValue(0);
   const copyAnimation = useSharedValue(0);
   const buttonAnimation = useSharedValue(0);
@@ -101,10 +100,12 @@ export default function LoginScreen({ navigation: navigationProp }) {
 
   const handleAppleLogin = async () => {
     try {
-      await appleLogin();
-      Alert.alert('로그인 성공', '애플 계정으로 로그인됐어요!');
-    } catch (error) {
-      Alert.alert('로그인 실패', error.message);
+      await loginWithApple();
+    } catch {
+      Alert.alert(
+        '로그인 실패',
+        '애플 로그인 중 문제가 발생했어요. 다시 시도해주세요.'
+      );
     }
   };
 
