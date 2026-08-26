@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
-  Alert,
   Dimensions,
   RefreshControl,
   ScrollView,
@@ -34,7 +33,7 @@ const FEATURE_CARD_HEIGHT = 224;
 const CANDIDATE_CARD_WIDTH = Dimensions.get('window').width * 0.75;
 
 export default function MainScreen() {
-  const { user } = useAuth();
+  const { exitGuestMode, isGuest, user } = useAuth();
   const navigation = useNavigation();
   const cardAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
@@ -93,12 +92,12 @@ export default function MainScreen() {
   };
 
   const handleShowAllPlaces = () => {
-    Alert.alert('준비 중', '곧 오픈 예정이에요!');
+    navigation.navigate('AdoptedPlaces');
   };
 
   const handleShowNotifications = () => {
     setHasNotification(false);
-    Alert.alert('알림', '새로운 알림이 없어요');
+    navigation.navigate('Notifications');
   };
 
   const handleGoToChatRoom = () => {
@@ -117,6 +116,10 @@ export default function MainScreen() {
       setRefreshing(false);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, 1500);
+  };
+
+  const handleLoginPress = () => {
+    exitGuestMode();
   };
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
@@ -143,6 +146,21 @@ export default function MainScreen() {
           />
         }
       >
+        {isGuest && (
+          <View style={styles.guestBanner}>
+            <Text style={styles.guestBannerText}>
+              로그인하면 소통방과 로컬패스를 이용할 수 있어요
+            </Text>
+            <TouchableOpacity
+              style={styles.guestLoginButton}
+              activeOpacity={0.7}
+              onPress={handleLoginPress}
+            >
+              <Text style={styles.guestLoginButtonText}>로그인</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.header}>
           <View style={styles.logoGroup}>
             <View style={styles.logoIcon}>
@@ -282,6 +300,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 32,
+  },
+  guestBanner: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 10,
+    height: 44,
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 12,
+  },
+  guestBannerText: {
+    color: '#FFFFFF',
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  guestLoginButton: {
+    alignItems: 'center',
+    borderColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  guestLoginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
   },
   header: {
     alignItems: 'center',

@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -25,7 +26,7 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 
-function PostCard({ post, onPress, onToggleLike }) {
+function PostCard({ post, onPress, onShare, onToggleLike }) {
   return (
     <TouchableOpacity style={styles.postCard} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.postHeader}>
@@ -79,7 +80,7 @@ function PostCard({ post, onPress, onToggleLike }) {
           </Text>
         </TouchableOpacity>
         <Text style={styles.actionText}>댓글 {post.comments}</Text>
-        <TouchableOpacity activeOpacity={0.7}>
+        <TouchableOpacity activeOpacity={0.7} onPress={onShare}>
           <Text style={styles.shareIcon}>↗</Text>
         </TouchableOpacity>
       </View>
@@ -89,13 +90,25 @@ function PostCard({ post, onPress, onToggleLike }) {
 
 export default function ChatRoomScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const inputRef = useRef(null);
+  const searchInputRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const [posts, setPosts] = useState(initialPosts);
   const [message, setMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchText, setSearchText] = useState('');
   const regionName = user?.region?.fullName || '지역';
   const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
+  const normalizedSearchText = searchText.trim().toLowerCase();
+  const visiblePosts = normalizedSearchText
+    ? posts.filter((post) =>
+        `${post.title} ${post.content} ${post.categoryTag}`
+          .toLowerCase()
+          .includes(normalizedSearchText),
+      )
+    : posts;
 
   useEffect(() => {
     return () => {
@@ -105,8 +118,21 @@ export default function ChatRoomScreen() {
     };
   }, []);
 
-  const handlePostPress = () => {
-    Alert.alert('상세보기', '상세 화면은 준비 중이에요!');
+  const handlePostPress = (post) => {
+    navigation.navigate('PostDetail', { post });
+  };
+
+  const handleSearchPress = () => {
+    setIsSearchVisible(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  };
+
+  const handleShare = async () => {
+    await Share.share({
+      message: '로컬픽에서 발견한 명소를 확인해보세요!',
+    });
   };
 
   const handleToggleLike = (postId) => {
@@ -134,9 +160,24 @@ export default function ChatRoomScreen() {
       return;
     }
 
+    const nextPost = {
+      id: `post-${Date.now()}`,
+      author: user?.nickname || '로컬픽 사용자',
+      time: '방금 전',
+      generationTag: '내 추천',
+      categoryTag: '명소',
+      imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
+      title: message.trim(),
+      content: message.trim(),
+      progress: 12,
+      likes: 0,
+      likedByMe: false,
+      comments: 0,
+    };
+
+    setPosts((currentPosts) => [nextPost, ...currentPosts]);
     setMessage('');
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('공유 완료', '명소가 소통방에 공유됐어요!');
   };
 
   const handleFocusComposer = () => {
@@ -168,14 +209,37 @@ export default function ChatRoomScreen() {
             <Text style={styles.subtitle}>{verificationLabel}</Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.iconButton} activeOpacity={0.7} onPress={handleSearchPress}>
               <Text style={styles.iconButtonText}>⌕</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.iconButton, styles.disabledIconButton]} disabled>
               <Text style={styles.iconButtonText}>⋯</Text>
             </TouchableOpacity>
           </View>
         </View>
+
+        {isSearchVisible && (
+          <View style={styles.searchBar}>
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="게시글 검색"
+              placeholderTextColor="#9B9F98"
+            />
+            <TouchableOpacity
+              style={styles.searchCloseButton}
+              activeOpacity={0.7}
+              onPress={() => {
+                setSearchText('');
+                setIsSearchVisible(false);
+              }}
+            >
+              <Text style={styles.searchCloseText}>×</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <ScrollView
           bounces
@@ -183,7 +247,7 @@ export default function ChatRoomScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.feedContent,
-            posts.length === 0 && styles.emptyFeedContent,
+            visiblePosts.length === 0 && styles.emptyFeedContent,
           ]}
           refreshControl={
             <RefreshControl
@@ -194,10 +258,12 @@ export default function ChatRoomScreen() {
             />
           }
         >
-          {posts.length === 0 ? (
+          {visiblePosts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>📍</Text>
-              <Text style={styles.emptyTitle}>아직 등록된 명소가 없어요</Text>
+              <Text style={styles.emptyTitle}>
+                {normalizedSearchText ? '검색 결과가 없어요' : '아직 등록된 명소가 없어요'}
+              </Text>
               <Text style={styles.emptyDescription}>첫 번째 로컬 명소를 공유해보세요!</Text>
               <TouchableOpacity
                 style={styles.emptyButton}
@@ -208,11 +274,12 @@ export default function ChatRoomScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            posts.map((post) => (
+            visiblePosts.map((post) => (
               <PostCard
                 key={post.id}
                 post={post}
-                onPress={handlePostPress}
+                onPress={() => handlePostPress(post)}
+                onShare={handleShare}
                 onToggleLike={() => handleToggleLike(post.id)}
               />
             ))
@@ -282,6 +349,37 @@ const styles = StyleSheet.create({
   },
   iconButtonText: {
     color: MAIN_GREEN,
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  disabledIconButton: {
+    opacity: 0.3,
+  },
+  searchBar: {
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 12,
+    marginHorizontal: 20,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    color: TEXT_PRIMARY,
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 12,
+  },
+  searchCloseButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  searchCloseText: {
+    color: TEXT_SECONDARY,
     fontSize: 22,
     fontWeight: '900',
   },

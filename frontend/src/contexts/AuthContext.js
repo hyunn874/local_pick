@@ -58,6 +58,7 @@ export function AuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const accessTokenRef = useRef(null);
   const refreshTokenRef = useRef(null);
@@ -109,6 +110,7 @@ export function AuthProvider({ children }) {
     setAccessToken(normalizedAuthState.accessToken);
     setRefreshToken(normalizedAuthState.refreshToken);
     setIsOnboarded(normalizedAuthState.isOnboarded);
+    setIsGuest(false);
     syncTokenRefs(normalizedAuthState.accessToken, normalizedAuthState.refreshToken);
     await writeStoredAuth(normalizedAuthState);
 
@@ -120,9 +122,18 @@ export function AuthProvider({ children }) {
     setAccessToken(null);
     setRefreshToken(null);
     setIsOnboarded(false);
+    setIsGuest(false);
     syncTokenRefs(null, null);
     await clearStoredAuth();
   }, [syncTokenRefs]);
+
+  const startGuestMode = useCallback(() => {
+    setIsGuest(true);
+  }, []);
+
+  const exitGuestMode = useCallback(() => {
+    setIsGuest(false);
+  }, []);
 
   const devLogin = useCallback(() => {
     const nextAuthState = {
@@ -244,23 +255,29 @@ export function AuthProvider({ children }) {
       accessToken,
       refreshToken,
       user,
+      isGuest,
       isInitializing,
       isLoggedIn: Boolean(user),
       isOnboarded,
       completeOnboarding,
       devLogin,
+      exitGuestMode,
       loginWithKakao,
       logout,
+      startGuestMode,
     }),
     [
       accessToken,
       completeOnboarding,
       devLogin,
+      exitGuestMode,
+      isGuest,
       isInitializing,
       isOnboarded,
       loginWithKakao,
       logout,
       refreshToken,
+      startGuestMode,
       user,
     ],
   );
