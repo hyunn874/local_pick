@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 
 import { useAuth } from '../contexts/AuthContext';
 import { setPostCommentCount } from '../state/postCommentCounts';
+import { setPostLikeCount } from '../state/postLikeCounts';
 import { setMyPostProgress } from '../state/myPostProgress';
 
 const BACKGROUND = '#F8F6F1';
@@ -123,10 +125,12 @@ export default function PostDetailScreen({ navigation, route }) {
   const imageSource = post?.imageUrl || post?.image;
   const generationTag = post?.generationTag || post?.ageTag || '전체';
   const categoryTag = post?.categoryTag || '기타';
+  const isCommentEmpty = !commentText.trim();
 
   const handleToggleLike = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsLiked((current) => {
+      const nextIsLiked = !current;
       const nextLikes = likeCount + (current ? -1 : 1);
       const nextProgress = Math.min(
         100,
@@ -135,17 +139,19 @@ export default function PostDetailScreen({ navigation, route }) {
 
       setLikeCount(nextLikes);
       setProgress(nextProgress);
+      setPostLikeCount(post?.id, nextLikes, nextIsLiked);
 
       if (post?.isMine) {
         writeOngoingPick(post, nextLikes, nextProgress);
       }
 
-      return !current;
+      return nextIsLiked;
     });
   };
 
   const handleSendComment = () => {
-    if (!commentText.trim()) {
+    if (isCommentEmpty) {
+      Alert.alert('내용을 입력해주세요', '댓글 내용을 작성해주세요.');
       return;
     }
 
@@ -250,6 +256,12 @@ export default function PostDetailScreen({ navigation, route }) {
                 )}
 
                 <Text style={styles.postTitle}>{post.title}</Text>
+                {post.location && (
+                  <View style={styles.locationRow}>
+                    <Ionicons name="location-outline" size={15} color="#7A9B8A" />
+                    <Text style={styles.locationText}>{post.location}</Text>
+                  </View>
+                )}
                 <Text style={styles.postContent}>{post.content}</Text>
 
                 <View style={styles.divider} />
@@ -300,8 +312,9 @@ export default function PostDetailScreen({ navigation, route }) {
                 placeholderTextColor="#9B9F98"
               />
               <TouchableOpacity
-                style={[styles.sendButton, !commentText.trim() && styles.disabledSendButton]}
+                style={[styles.sendButton, isCommentEmpty && styles.disabledSendButton]}
                 activeOpacity={0.7}
+                disabled={isCommentEmpty}
                 onPress={handleSendComment}
               >
                 <Text style={styles.sendButtonText}>전송</Text>
@@ -458,6 +471,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 25,
     marginTop: 18,
+  },
+  locationRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 7,
+  },
+  locationText: {
+    color: '#7A9B8A',
+    fontSize: 13,
+    fontWeight: '800',
   },
   postContent: {
     color: TEXT_PRIMARY,
@@ -637,7 +661,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   disabledSendButton: {
-    opacity: 0.45,
+    backgroundColor: '#CCCCCC',
   },
   sendButtonText: {
     color: CARD,

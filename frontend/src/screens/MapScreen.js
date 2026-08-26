@@ -22,6 +22,7 @@ import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
 import { generationFilters, recommendedPlaces } from '../mocks/mapMockData';
+import { getBalance, setBalance, useBalance } from '../state/localPassStore';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -138,7 +139,6 @@ function createSimilarPlaces(place) {
 function PlaceBottomSheet({
   animatedStyle,
   onClose,
-  onOpenChatRoom,
   onShowAlternatives,
   onUsePass,
   place,
@@ -179,13 +179,6 @@ function PlaceBottomSheet({
       )}
       <View style={styles.sheetActions}>
         <TouchableOpacity
-          style={styles.sheetPrimaryButton}
-          activeOpacity={0.7}
-          onPress={onOpenChatRoom}
-        >
-          <Text style={styles.sheetPrimaryButtonText}>소통방에서 보기</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           style={styles.sheetSecondaryButton}
           activeOpacity={0.7}
           onPress={onUsePass}
@@ -215,7 +208,7 @@ export default function MapScreen() {
   const [selectedPin, setSelectedPin] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
-  const [localPassBalance, setLocalPassBalance] = useState(3);
+  useBalance();
   const { regions } = useRegions();
 
   const normalizedSearchText = searchText.trim().toLowerCase();
@@ -312,11 +305,6 @@ export default function MapScreen() {
     navigation.navigate('AllRecommend');
   };
 
-  const handleOpenChatRoom = () => {
-    setSelectedPin(null);
-    navigation.navigate('ChatRoom');
-  };
-
   const handleUsePass = () => {
     if (isGuest) {
       Alert.alert(
@@ -330,7 +318,7 @@ export default function MapScreen() {
       return;
     }
 
-    if (localPassBalance <= 0) {
+    if (getBalance() <= 0) {
       Alert.alert(
         '로컬패스 부족',
         '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
@@ -338,18 +326,38 @@ export default function MapScreen() {
       return;
     }
 
-    const selectedPlaceName = selectedPin?.name || selectedPin?.title || '선택한 장소';
+    const selectedMarker = selectedPin || {};
+    const selectedPlaceName = selectedMarker.title || selectedMarker.name || '선택한 장소';
 
     Alert.alert(
-      '장소 열람',
-      `${selectedPlaceName}을 열람하기 위해 로컬패스 1개를 사용해요.`,
+      '로컬패스 사용',
+      `${selectedPlaceName} 상세 정보를 열람하기 위해\n로컬패스 1개를 사용해요.`,
       [
         { text: '취소', style: 'cancel' },
         {
-          text: '사용하기',
+          text: '열람하기',
           onPress: () => {
-            setLocalPassBalance((current) => Math.max(0, current - 1));
-            Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+            setBalance(getBalance() - 1);
+            setSelectedPin(null);
+            navigation.navigate('PostDetail', {
+              post: {
+                id: selectedMarker.id,
+                author: selectedMarker.region || '지역 거주자',
+                isResident: true,
+                time: '최근',
+                image: null,
+                ageTag: selectedMarker.ageTag || '전체',
+                categoryTag: selectedMarker.category || '명소',
+                title: selectedPlaceName,
+                content:
+                  selectedMarker.description ||
+                  '로컬 거주자가 추천한 명소예요. 직접 방문해서 확인해보세요!',
+                progress: 83,
+                likes: selectedMarker.likes || 24,
+                comments: 2,
+                location: selectedMarker.region || '대전 유성구',
+              },
+            });
           },
         },
       ],
@@ -473,7 +481,6 @@ export default function MapScreen() {
           animatedStyle={sheetAnimatedStyle}
           showAlternatives={showAlternatives}
           onClose={() => setSelectedPin(null)}
-          onOpenChatRoom={handleOpenChatRoom}
           onShowAlternatives={() => setShowAlternatives(true)}
           onUsePass={handleUsePass}
         />
@@ -807,17 +814,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
-  },
-  sheetPrimaryButton: {
-    alignItems: 'center',
-    backgroundColor: MAIN_GREEN,
-    borderRadius: 8,
-    paddingVertical: 13,
-  },
-  sheetPrimaryButtonText: {
-    color: CARD,
-    fontSize: 14,
-    fontWeight: '900',
   },
   sheetSecondaryButton: {
     alignItems: 'center',

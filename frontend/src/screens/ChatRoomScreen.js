@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { initialPosts } from '../mocks/chatRoomMockData';
 import { getPostCommentCounts } from '../state/postCommentCounts';
+import { getPostLikeCounts } from '../state/postLikeCounts';
 import { setMyPostProgress } from '../state/myPostProgress';
 
 const MAIN_GREEN = '#2D5C44';
@@ -32,6 +33,14 @@ const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const AGE_TAGS = ['20대', '30-40대', '50대+'];
 const TARGET_LIKES = 30;
+
+function getResidenceName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '내 동네';
+}
 
 function writeOngoingPick(post) {
   setMyPostProgress({
@@ -128,9 +137,10 @@ export default function ChatRoomScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const regionName = user?.region?.fullName || '지역';
+  const regionName = getResidenceName(user);
   const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
   const normalizedSearchText = searchText.trim().toLowerCase();
+  const isMessageEmpty = !message.trim();
   const visiblePosts = normalizedSearchText
     ? posts.filter((post) =>
         `${post.title} ${post.content} ${post.categoryTag}`
@@ -150,18 +160,27 @@ export default function ChatRoomScreen() {
   useFocusEffect(
     useCallback(() => {
       const commentCounts = getPostCommentCounts();
+      const likeCounts = getPostLikeCounts();
 
       setPosts((currentPosts) =>
         currentPosts.map((post) => {
           const nextCommentCount = commentCounts[String(post.id)];
+          const nextLikeState = likeCounts[String(post.id)];
 
-          if (nextCommentCount === undefined) {
+          if (nextCommentCount === undefined && nextLikeState === undefined) {
             return post;
           }
 
           return {
             ...post,
-            comments: nextCommentCount,
+            ...(nextCommentCount === undefined ? {} : { comments: nextCommentCount }),
+            ...(nextLikeState === undefined
+              ? {}
+              : {
+                  likes: nextLikeState.count,
+                  isLiked: nextLikeState.isLiked,
+                  likedByMe: nextLikeState.isLiked,
+                }),
           };
         }),
       );
@@ -238,7 +257,8 @@ export default function ChatRoomScreen() {
   };
 
   const handleSend = () => {
-    if (!message.trim()) {
+    if (isMessageEmpty) {
+      Alert.alert('내용을 입력해주세요', '명소 소개 글을 작성해주세요.');
       return;
     }
 
@@ -429,8 +449,9 @@ export default function ChatRoomScreen() {
               placeholderTextColor="#9B9F98"
             />
             <TouchableOpacity
-              style={[styles.sendButton, !message.trim() && styles.disabledSendButton]}
+              style={[styles.sendButton, isMessageEmpty && styles.disabledSendButton]}
               activeOpacity={0.7}
+              disabled={isMessageEmpty}
               onPress={handleSend}
             >
               <Text style={styles.sendButtonText}>↑</Text>
@@ -812,7 +833,7 @@ const styles = StyleSheet.create({
     width: 44,
   },
   disabledSendButton: {
-    opacity: 0.45,
+    backgroundColor: '#CCCCCC',
   },
   sendButtonText: {
     color: CARD,
