@@ -23,9 +23,13 @@ public class User extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** 카카오 로그인 고유 식별자 */
-    @Column(nullable = false, unique = true)
+    /** 카카오 로그인 고유 식별자. Apple 전용 회원은 null 이다. */
+    @Column(unique = true)
     private String kakaoId;
+
+    /** Apple Sign In 고유 식별자. 카카오 전용 회원은 null 이다. */
+    @Column(unique = true)
+    private String appleId;
 
     /** 온보딩에서 설정. 서비스 내 고유해야 한다. */
     @Column(unique = true, length = 20)
@@ -54,8 +58,9 @@ public class User extends BaseTimeEntity {
     public static final int SIGNUP_BONUS = 5;
 
     @Builder
-    private User(String kakaoId, String profileImageUrl) {
+    private User(String kakaoId, String appleId, String profileImageUrl) {
         this.kakaoId = kakaoId;
+        this.appleId = appleId;
         this.profileImageUrl = profileImageUrl;
         this.onboarded = false;
         this.localPassBalance = 0;

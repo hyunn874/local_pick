@@ -6,6 +6,7 @@ import com.localpick.backend.domain.user.UserResponse;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
 import com.localpick.backend.global.security.JwtTokenProvider;
+import com.localpick.backend.infra.external.apple.AppleTokenVerifier;
 import com.localpick.backend.infra.external.kakao.KakaoOAuthClient;
 import com.localpick.backend.infra.external.kakao.KakaoTokenResponse;
 import com.localpick.backend.infra.external.kakao.KakaoUserResponse;
@@ -26,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
+    private final AppleTokenVerifier appleTokenVerifier;
     private final KakaoOAuthClient kakaoOAuthClient;
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
@@ -62,6 +64,23 @@ public class AuthService {
             if (kakaoUser.profileImageUrl() != null) {
                 user.updateProfileImage(kakaoUser.profileImageUrl());
             }
+        }
+
+        return issueTokens(user, isNewUser);
+    }
+
+    @Transactional
+    public AuthResponse loginWithApple(AppleLoginRequest request) {
+        String appleId = appleTokenVerifier.verifyAndExtractSub(request.identityToken());
+
+        User user = userRepository.findByAppleId(appleId).orElse(null);
+        boolean isNewUser = (user == null);
+
+        if (isNewUser) {
+            user = userRepository.save(User.builder()
+                    .appleId(appleId)
+                    .build());
+            log.info("[Auth] Apple 신규 가입 — userId={}", user.getId());
         }
 
         return issueTokens(user, isNewUser);

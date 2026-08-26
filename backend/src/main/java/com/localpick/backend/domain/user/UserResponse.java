@@ -4,6 +4,7 @@ package com.localpick.backend.domain.user;
 public record UserResponse(
         Long id,
         String kakaoId,
+        String appleId,
         String nickname,
         GenerationTag generationTag,
         String generationLabel,
@@ -16,6 +17,7 @@ public record UserResponse(
         return new UserResponse(
                 user.getId(),
                 user.getKakaoId(),
+                user.getAppleId(),
                 user.getNickname(),
                 user.getGenerationTag(),
                 user.getGenerationTag() != null ? user.getGenerationTag().getLabel() : null,
