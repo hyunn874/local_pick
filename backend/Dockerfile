@@ -15,4 +15,4 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 ENV SPRING_PROFILES_ACTIVE=prod
 ENV TZ=Asia/Seoul
 EXPOSE 8080
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=35", "-XX:InitialRAMPercentage=35", "-Xss256k", "-XX:+UseSerialGC", "-XX:MaxMetaspaceSize=80m", "-XX:ReservedCodeCacheSize=32m", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
