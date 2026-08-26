@@ -4,13 +4,14 @@ import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
 import com.nimbusds.jose.proc.BadJOSEException;
-import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
@@ -22,12 +23,17 @@ import org.springframework.stereotype.Component;
 import java.net.URL;
 import java.text.ParseException;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Apple identityToken(JWT) 검증기.
  *
  * Apple 공개키(JWK Set)를 캐싱하고, 서명·iss·aud·exp 를 검증한 뒤 sub 를 반환한다.
- * kid 불일치 시 Apple 서버에 자동 재요청하므로 키 로테이션에도 안전하다.
+ *
+ * 캐시 정책:
+ *   - TTL 24시간 — Apple 키는 거의 바뀌지 않는다.
+ *   - kid 미스매치 시 자동 재요청하므로 키 로테이션에도 안전하다.
+ *   - Render 무료 티어 네트워크 불안정 대비 retry 1회, outage tolerance 활성화.
  */
 @Slf4j
 @Component
@@ -46,14 +52,18 @@ public class AppleTokenVerifier {
         try {
             JWKSource<SecurityContext> keySource = JWKSourceBuilder
                     .create(new URL(APPLE_JWKS_URL))
+                    .cache(TimeUnit.HOURS.toMillis(24), TimeUnit.HOURS.toMillis(1))
+                    .retrying(true)
+                    .outageTolerant(true)
                     .build();
 
+            // DefaultJWTProcessor 기본 타입 검증기가 typ:"JWT" 과 null 모두 허용한다.
+            // setJWSTypeVerifier 를 호출하지 않는다 — no-arg 생성자는 null 만 허용해서
+            // Apple 이 typ 헤더를 추가하면 깨진다.
             ConfigurableJWTProcessor<SecurityContext> processor = new DefaultJWTProcessor<>();
-            processor.setJWSTypeVerifier(new DefaultJOSEObjectTypeVerifier<>());
             processor.setJWSKeySelector(
                     new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keySource));
 
-            // iss, aud, exp, sub 자동 검증
             processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
                     new JWTClaimsSet.Builder()
                             .issuer(APPLE_ISSUER)
@@ -65,7 +75,6 @@ public class AppleTokenVerifier {
             log.info("[Apple] JWT 검증기 초기화 완료 — bundleId={}", bundleId);
 
         } catch (Exception e) {
-            // 시작 시 Apple 에 못 닿아도 실패하지 않는다. 첫 검증 시점에 재시도된다.
             log.warn("[Apple] JWT 검증기 초기화 중 경고: {}", e.getMessage());
         }
     }
@@ -75,7 +84,16 @@ public class AppleTokenVerifier {
      */
     public String verifyAndExtractSub(String identityToken) {
         if (jwtProcessor == null) {
+            log.error("[Apple] JWT 검증기가 초기화되지 않았습니다.");
             throw new BusinessException(ErrorCode.APPLE_AUTH_FAILED);
+        }
+
+        // 디버그용: JWT 헤더의 alg, kid 기록 (토큰 값 자체는 찍지 않는다)
+        try {
+            JWSHeader header = SignedJWT.parse(identityToken).getHeader();
+            log.error("[Apple] 검증 시도 — alg={}, kid={}", header.getAlgorithm(), header.getKeyID());
+        } catch (ParseException e) {
+            log.error("[Apple] JWT 헤더 파싱 실패");
         }
 
         try {
@@ -87,6 +105,7 @@ public class AppleTokenVerifier {
                 throw new BusinessException(ErrorCode.APPLE_AUTH_FAILED);
             }
 
+            log.info("[Apple] 토큰 검증 성공 — sub 추출 완료");
             return sub;
 
         } catch (ParseException | BadJOSEException | JOSEException e) {
