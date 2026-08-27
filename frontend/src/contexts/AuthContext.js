@@ -191,9 +191,33 @@ export function AuthProvider({ children }) {
         throw new Error('Apple identity token을 받지 못했어요.');
       }
 
-      // 백엔드 Apple 로그인 API 연동 전까지 임시로 개발용 로그인과 동일하게 처리한다.
-      console.log('Apple identityToken:', identityToken);
-      await devLogin();
+      // 백엔드에 identityToken 을 보내 JWT 를 발급받는다.
+      const response = await apiClient.post('/api/auth/apple', { identityToken });
+      const authData = response?.data ?? response;
+
+      if (!authData?.accessToken || !authData?.refreshToken) {
+        throw new Error('서버에서 토큰을 받지 못했어요.');
+      }
+
+      // fetchMe 가 Authorization 헤더를 붙일 수 있도록 ref 를 먼저 채운다.
+      syncTokenRefs(authData.accessToken, authData.refreshToken);
+
+      let userData;
+      try {
+        userData = await fetchMe();
+      } catch (meError) {
+        syncTokenRefs(null, null);
+        throw meError;
+      }
+
+      return applyAuth({
+        accessToken: authData.accessToken,
+        refreshToken: authData.refreshToken,
+        isNewUser: authData.isNewUser,
+        isOnboarded: authData.isOnboarded,
+        provider: 'apple',
+        user: userData,
+      });
     } catch (error) {
       if (error.code === 'ERR_REQUEST_CANCELED') {
         return;
@@ -201,7 +225,7 @@ export function AuthProvider({ children }) {
 
       throw error;
     }
-  }, [devLogin]);
+  }, [applyAuth, syncTokenRefs]);
 
   const completeOnboarding = useCallback(
     async (nickname, generationTag) => {
