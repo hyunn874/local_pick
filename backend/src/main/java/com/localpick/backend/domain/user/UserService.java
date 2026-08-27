@@ -91,6 +91,13 @@ public class UserService {
                 .build());
     }
 
+    @Transactional
+    public void withdraw(Long userId) {
+        User user = getUser(userId);
+        user.withdraw();
+        log.info("[User] 회원탈퇴 — userId={}", userId);
+    }
+
     private User getUser(Long userId) {
         if (userId == null) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED);

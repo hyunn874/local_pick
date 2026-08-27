@@ -49,6 +49,11 @@ public class AuthService {
         String kakaoId = kakaoUser.kakaoId();
 
         User user = userRepository.findByKakaoId(kakaoId).orElse(null);
+
+        if (user != null && user.isDeleted()) {
+            throw new BusinessException(ErrorCode.USER_WITHDRAWN);
+        }
+
         boolean isNewUser = (user == null);
 
         if (isNewUser) {
@@ -74,6 +79,11 @@ public class AuthService {
         String appleId = appleTokenVerifier.verifyAndExtractSub(request.identityToken());
 
         User user = userRepository.findByAppleId(appleId).orElse(null);
+
+        if (user != null && user.isDeleted()) {
+            throw new BusinessException(ErrorCode.USER_WITHDRAWN);
+        }
+
         boolean isNewUser = (user == null);
 
         if (isNewUser) {

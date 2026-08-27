@@ -2,6 +2,7 @@ package com.localpick.backend.domain.user;
 
 import com.localpick.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -54,6 +55,13 @@ public class User extends BaseTimeEntity {
     @Column(nullable = false)
     private int localPassBalance;
 
+    /** 소프트 삭제 여부 */
+    @Column(nullable = false)
+    private boolean deleted;
+
+    /** 탈퇴 시각 */
+    private LocalDateTime deletedAt;
+
     /** 가입 시 지급하는 로컬패스 */
     public static final int SIGNUP_BONUS = 5;
 
@@ -64,6 +72,7 @@ public class User extends BaseTimeEntity {
         this.profileImageUrl = profileImageUrl;
         this.onboarded = false;
         this.localPassBalance = 0;
+        this.deleted = false;
     }
 
     /** 온보딩 완료 — 닉네임과 세대 태그를 확정한다. */
@@ -92,5 +101,15 @@ public class User extends BaseTimeEntity {
 
     public boolean canAfford(int amount) {
         return this.localPassBalance >= amount;
+    }
+
+    /** 회원탈퇴 — 개인정보를 즉시 파기하고 소프트 삭제 처리한다. */
+    public void withdraw() {
+        this.deleted = true;
+        this.deletedAt = LocalDateTime.now();
+        this.kakaoId = null;
+        this.appleId = null;
+        this.nickname = null;
+        this.profileImageUrl = null;
     }
 }
