@@ -80,6 +80,9 @@ public class Post extends BaseTimeEntity {
     @Column(nullable = false)
     private int viewCount;
 
+    @Column(nullable = false)
+    private int likeCount;
+
     @Builder
     private Post(User author, Region region, String title, String content, String placeName,
                  Double latitude, Double longitude, GenerationTag generationTag,
@@ -97,6 +100,7 @@ public class Post extends BaseTimeEntity {
         this.adoptionCount = 0;
         this.adopted = false;
         this.viewCount = 0;
+        this.likeCount = 0;
     }
 
     /**
@@ -116,6 +120,16 @@ public class Post extends BaseTimeEntity {
 
     public void increaseViewCount() {
         this.viewCount++;
+    }
+
+    public void increaseLikeCount() {
+        this.likeCount++;
+    }
+
+    public void decreaseLikeCount() {
+        if (this.likeCount > 0) {
+            this.likeCount--;
+        }
     }
 
     public void edit(String title, String content, String placeName) {
