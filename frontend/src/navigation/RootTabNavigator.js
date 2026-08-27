@@ -154,6 +154,8 @@ function MainTabs() {
 
 function AuthGate() {
   const { isGuest, isInitializing, isLoggedIn, isOnboarded } = useAuth();
+  const shouldShowLogin = !isLoggedIn && !isGuest;
+  const shouldShowOnboarding = isLoggedIn && isOnboarded === false;
 
   if (isInitializing) {
     return (
@@ -163,11 +165,11 @@ function AuthGate() {
     );
   }
 
-  if (!isLoggedIn && !isGuest) {
+  if (shouldShowLogin) {
     return <LoginScreen />;
   }
 
-  if (isLoggedIn && !isOnboarded) {
+  if (shouldShowOnboarding) {
     return <OnboardingScreen />;
   }
 

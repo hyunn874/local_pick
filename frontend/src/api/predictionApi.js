@@ -32,6 +32,15 @@ function normalizeRankOne(region) {
   }
 
   const metrics = Array.isArray(region.metrics) ? region.metrics : [];
+  const visitorValue =
+    region.visitorGrowthRate ??
+    region.visitorGrowth ??
+    region.visitorIncrease ??
+    region.visitorScore;
+  const spendingValue =
+    region.consumptionIndex ?? region.spendingIndex ?? region.totalScore;
+  const diversityValue =
+    region.diversityPercentile ?? region.diversityIndex ?? region.diversityScore;
 
   return {
     region: region.region || region.regionName || region.fullName || region.name || '지역명 미정',
@@ -40,40 +49,54 @@ function normalizeRankOne(region) {
       normalizeMetric(metrics.find((metric) => metric.id === 'visitor'), {
         id: 'visitor',
         label: '방문자 증가율',
-        value: formatPercent(region.visitorGrowthRate ?? region.visitorGrowth, '-'),
+        value: formatPercent(visitorValue, '-'),
         colorKey: 'green',
-        progress: region.visitorProgress ?? 0,
+        progress: region.visitorProgress ?? getPercentFromText(visitorValue, 0),
       }),
       normalizeMetric(metrics.find((metric) => metric.id === 'spending'), {
         id: 'spending',
         label: '소비강도 지수',
-        value: region.spendingLabel || region.expenseLabel || '분석 중',
+        value: region.spendingLabel || region.expenseLabel || spendingValue || '분석 중',
         colorKey: 'orange',
-        progress: region.spendingProgress ?? region.expenseProgress ?? 0,
+        progress: region.spendingProgress ?? region.expenseProgress ?? getPercentFromText(spendingValue, 0),
       }),
       normalizeMetric(metrics.find((metric) => metric.id === 'diversity'), {
         id: 'diversity',
         label: '관광객 다양성',
-        value: region.diversityLabel || formatPercent(region.diversityPercentile, '분석 중'),
+        value: region.diversityLabel || formatPercent(diversityValue, '분석 중'),
         colorKey: 'red',
-        progress: region.diversityProgress ?? 0,
+        progress: region.diversityProgress ?? getPercentFromText(diversityValue, 0),
       }),
     ],
   };
 }
 
 function normalizeRankingItem(region, index) {
+  const visitorValue =
+    region.visitorGrowthRate ??
+    region.visitorGrowth ??
+    region.visitorIncrease ??
+    region.visitorScore;
+  const diversityValue =
+    region.diversityPercentile ?? region.diversityIndex ?? region.diversityScore;
+  const rank = region.rank ?? region.ranking;
+  const rankText = String(rank || '').toUpperCase().startsWith('RANK')
+    ? rank
+    : rank
+      ? `RANK ${rank}`
+      : `RANK ${index + 2}`;
+
   return {
-    rank: region.rank || `RANK ${index + 2}`,
+    rank: rankText,
     region: region.region || region.regionName || region.fullName || region.name || '지역명 미정',
     visitor:
       region.visitor ||
       region.visitorLabel ||
-      `방문자 ${formatPercent(region.visitorGrowthRate ?? region.visitorGrowth, '-')}`,
+      `방문자 ${formatPercent(visitorValue, '-')}`,
     diversity:
       region.diversity ||
       region.diversityLabel ||
-      `다양성 ${formatPercent(region.diversityPercentile, '-')}`,
+      `다양성 ${formatPercent(diversityValue, '-')}`,
   };
 }
 
@@ -125,7 +148,14 @@ function normalizeDevVisitorRegion(region, index) {
 }
 
 export function normalizeHotLocalResponse(payload) {
-  const source = payload?.hotLocals || payload?.regions || payload?.ranking || payload;
+  const source =
+    payload?.featured ||
+    payload?.featuredRegions ||
+    payload?.hotLocals ||
+    payload?.regions ||
+    payload?.items ||
+    payload?.ranking ||
+    payload;
 
   if (Array.isArray(source)) {
     const [first, ...rest] = source;
@@ -137,8 +167,20 @@ export function normalizeHotLocalResponse(payload) {
   }
 
   return {
-    rankOne: normalizeRankOne(source?.rankOne || source?.top1 || source?.first),
-    ranking: (source?.ranking || source?.top3?.slice?.(1) || [])
+    rankOne: normalizeRankOne(
+      source?.rankOne ||
+      source?.top1 ||
+      source?.first ||
+      source?.featured?.[0] ||
+      source?.items?.[0],
+    ),
+    ranking: (
+      source?.ranking ||
+      source?.top3?.slice?.(1) ||
+      source?.featured?.slice?.(1) ||
+      source?.items?.slice?.(1) ||
+      []
+    )
       .map(normalizeRankingItem),
   };
 }
@@ -154,12 +196,11 @@ export function normalizeDevVisitorHotLocalResponse(payload) {
   };
 }
 
-export async function fetchWeeklyHotLocals({ week, limit = DEFAULT_HOT_LOCAL_LIMIT } = {}) {
-  const payload = await requestApi('/api/predictions/weekly/top3', {
+export async function fetchWeeklyHotLocals({ week } = {}) {
+  const payload = await requestApi('/api/predictions/featured', {
     method: 'GET',
     params: {
       week,
-      limit,
     },
     timeoutMs: HOT_LOCAL_TIMEOUT_MS,
   });

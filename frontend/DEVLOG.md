@@ -1,5 +1,73 @@
 # 로컬픽 프론트엔드 개발 로그
 
+## 2026-08-27
+
+### 완료한 작업
+- 앱 아이콘/스플래시 최종 이미지 적용 (`assets/icon.png` 등 교체)
+- 지도 SDK 카카오맵 → 네이버맵 전환
+  - `NaverMapView.js` 추가, `KakaoMapView.js` 제거
+  - 카카오는 로그인·역지오코딩 전용으로 역할 축소, 지도 표시는 네이버맵으로 분리
+- 거주자 인증 화면(`ResidentVerificationScreen`) 신설
+  - `kakaoApi.js`의 `getReverseGeocoding(latitude, longitude)`로 GPS 좌표를 클라이언트에서 바로 "시도 시군구" 문자열로 변환
+  - 서버에는 좌표 대신 변환된 행정구역 텍스트만 전송 (GPS 좌표 미전송 원칙 반영)
+- Apple 로그인 백엔드 실연동
+  - `authApi.loginWithAppleIdentityToken()` 추가, `POST /api/auth/apple`로 identityToken 전달
+  - 기존 "일단 devLogin으로 대체 처리" 임시 코드 제거, AuthContext가 실제 서버 토큰/유저 정보로 로그인 처리하도록 교체
+- 회원탈퇴 실 API 연동
+  - `authApi.deleteMyAccount()` 추가, `SettingsScreen`이 실제로 계정을 삭제하도록 교체
+  - 기존에 로컬 로그아웃만 하고 "탈퇴 완료"라고 안내하던 부분 제거
+- 소통방 게시글 기능 실 API 연동 착수 (`ChatRoomScreen`, `PostDetailScreen`)
+  - 목록 조회, 작성, 좋아요, 댓글 조회/작성을 전부 로컬 mock/state에서 백엔드 호출로 교체
+- 로컬패스 기능 실 API 연동 착수 (`LocalPassScreen`)
+  - 잔액 조회, 사용(차감), 사용 내역 조회를 인메모리 store에서 백엔드 호출로 교체
+- 온보딩 응답 처리 정규화
+  - 백엔드가 사용자 정보를 `{ member: {...} }` 형태로 감싸 보내는 것에 맞춰 `authApi.completeOnboarding`에서 언랩 처리 추가
+- 핫로컬(이 주의 발굴지역 · TOP3) API 단일화
+  - dev 전용 API(`/api/dev/visitors`)와 운영 API를 환경별로 분기 호출하던 구조 제거
+  - `/api/predictions/featured` 단일 엔드포인트로 통합, 로딩 스피너 추가
+- 백엔드 배포 인프라 전환(Render → Fly.io)에 맞춰 프론트 기본 API 주소 갱신
+  - `apiClient.js`, `.env.example`의 기본 URL을 `localpick-api.fly.dev`로 변경
+- 프론트 연동용 전체 API 명세서(`docs/api-endpoints.md`) 작성 및 공유
+
+### API 연동
+- `POST /api/auth/apple` — Apple 로그인 (identityToken 검증)
+- `DELETE /api/users/me` — 회원탈퇴
+- `POST /api/auth/resident-verify` — 거주자 인증 요청 (행정구역 텍스트만 전송)
+- `GET /api/auth/resident-status` — 거주자 인증 상태 조회
+- `GET /api/posts`, `POST /api/posts` — 소통방 게시글 목록/작성
+- `POST /api/posts/{id}/like` — 게시글 좋아요
+- `GET /api/posts/{id}/comments`, `POST /api/posts/{id}/comments` — 댓글 조회/작성
+- `GET /api/local-pass/balance` — 로컬패스 잔액 조회
+- `GET /api/local-pass/history` — 로컬패스 사용 내역 조회
+- `POST /api/local-pass/use` — 로컬패스 사용(차감)
+- `GET /api/predictions/featured` — 이 주의 발굴지역 / 핫로컬 TOP3
+- `POST /api/users/me/onboarding` — 응답 스키마 변경 대응(`member` 언랩)
+
+### 트러블슈팅
+1. 회원탈퇴 API가 `SettingsScreen`에 배포 서버 주소가 직접 하드코딩된 채로 호출되고 있었음
+   해결: `authApi.deleteMyAccount()`로 옮겨 `apiClient` 공통 경로(환경변수 기반 `API_BASE_URL`)를 타도록 정리
+2. Apple 로그인 응답을 `response.data.data`로 이중 언랩하고 있었음(`apiClient`가 이미 `data`를 벗겨서 반환)
+   해결: `response.data` 한 번만 접근하도록 수정
+3. 온보딩 API 응답이 `{ member: {...} }`로 감싸져 오는데 프론트는 flat한 유저 객체를 기대하고 있어 온보딩 완료 후 화면 전환이 되지 않았음
+   해결: `authApi.completeOnboarding`에서 `data?.member ?? data`로 정규화 (디버깅용 `console.log`가 임시로 남아있어 정리 필요)
+4. 백엔드가 Render → Fly.io로 이전되며 기존 API 주소로는 요청이 실패함
+   해결: `.env.example`/`apiClient.js` 기본값을 `localpick-api.fly.dev`로 갱신
+5. 핫로컬 화면이 dev 전용 API(`/api/dev/visitors`)를 프로덕션이 아닐 때 계속 우선 호출하던 구조라 배포 방식에 따라 동작이 갈릴 위험이 있었음
+   해결: `/api/predictions/featured` 단일 엔드포인트로 통합해 dev/운영 분기 자체를 제거
+
+### 현재 상태
+- **완료(커밋됨)**: 앱 아이콘/스플래시, 카카오맵→네이버맵 전환, 거주자 인증 화면 골격, API 명세서 문서
+- **작업 완료(로컬, 커밋 전)**: Apple 로그인 실연동, 회원탈퇴 실 API 연동, 소통방 게시글/좋아요/댓글 API 연동, 로컬패스 잔액/사용/내역 API 연동, 거주자 인증 상태조회·제출 연동, 핫로컬 API 단일화 — 총 13개 파일 변경
+- **아직 mock인 것**: 채택된 명소 전체보기(`AdoptedPlacesScreen`), 지도 로컬 추천 전체보기(`AllRecommendScreen`), 알림(`NotificationScreen`), 로컬패스 획득 방법 목록의 완료 여부 판정
+- **정리 필요**: `authApi.js`/`apiClient.js`에 남은 디버깅용 `console.log` 제거, 미사용 dead 파일(`apiClient (1).js`, `regionApi (1).js`, `useRegions (1).js`, `regionsApi.js`, `tourismApi.js`, `appClient.js`, `kakaoMapApi.js`) 정리
+
+### 내일 할 것
+- 오늘 로컬에서 작업한 API 연동 변경사항 실기기/시뮬레이터로 전체 회귀 테스트 후 커밋
+- 디버깅용 console.log 전부 제거
+- 채택된 명소 / 지도 추천 전체보기 화면 실 API 연동
+- 알림 기능 실제 구현 여부 결정 (현재는 배지만 항상 켜져 있고 목록은 비어있음)
+- 미사용 API 파일 정리
+
 ## 2026-08-18
 
 ### 완료한 작업

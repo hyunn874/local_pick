@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +21,11 @@ const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const NICKNAME_PATTERN = /^[가-힣A-Za-z0-9_]{2,12}$/;
 const NICKNAME_CHECK_DELAY_MS = 400;
+const GENERATION_TAG_MAP = {
+  '20대': 'TWENTIES',
+  '30-40대': 'THIRTIES_FORTIES',
+  '50대 이상': 'FIFTIES_PLUS',
+};
 
 const GENERATION_OPTIONS = [
   {
@@ -39,7 +45,7 @@ const GENERATION_OPTIONS = [
 export default function OnboardingScreen() {
   const { completeOnboarding, logout } = useAuth();
   const [nickname, setNickname] = useState('');
-  const [generationTag, setGenerationTag] = useState(GENERATION_OPTIONS[0].value);
+  const [selectedGeneration, setSelectedGeneration] = useState(GENERATION_OPTIONS[0].label);
   const [nicknameStatus, setNicknameStatus] = useState('idle');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,7 +55,9 @@ export default function OnboardingScreen() {
     [trimmedNickname],
   );
   const canSubmit =
-    nicknameStatus === 'available' && Boolean(generationTag) && !isSubmitting;
+    nicknameStatus === 'available'
+    && Boolean(selectedGeneration)
+    && !isSubmitting;
 
   useEffect(() => {
     if (!trimmedNickname) {
@@ -129,7 +137,12 @@ export default function OnboardingScreen() {
     setIsSubmitting(true);
 
     try {
-      await completeOnboarding(trimmedNickname, generationTag);
+      const generationTag = GENERATION_TAG_MAP[selectedGeneration];
+
+      await completeOnboarding({
+        nickname: trimmedNickname,
+        generationTag,
+      });
     } catch (error) {
       Alert.alert('온보딩 실패', error?.message || '잠시 후 다시 시도해주세요.');
     } finally {
@@ -152,7 +165,12 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.content}>
+        <ScrollView
+          style={styles.scrollContent}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.title}>프로필을 완성해주세요</Text>
           <Text style={styles.subtitle}>동네 주민들과 만날 때 사용할 정보를 설정합니다.</Text>
 
@@ -189,13 +207,13 @@ export default function OnboardingScreen() {
             <Text style={styles.label}>세대</Text>
             <View style={styles.segmentGroup}>
               {GENERATION_OPTIONS.map((option) => {
-                const isSelected = generationTag === option.value;
+                const isSelected = selectedGeneration === option.label;
 
                 return (
                   <Pressable
                     key={option.value}
                     style={[styles.segmentButton, isSelected && styles.selectedSegmentButton]}
-                    onPress={() => setGenerationTag(option.value)}
+                    onPress={() => setSelectedGeneration(option.label)}
                   >
                     <Text style={[styles.segmentText, isSelected && styles.selectedSegmentText]}>
                       {option.label}
@@ -205,7 +223,7 @@ export default function OnboardingScreen() {
               })}
             </View>
           </View>
-        </View>
+        </ScrollView>
 
         <View style={styles.footer}>
           <Pressable
@@ -254,10 +272,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-  content: {
+  scrollContent: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingBottom: 40,
+    paddingTop: 28,
   },
   title: {
     color: '#17221B',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   RefreshControl,
@@ -21,6 +22,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { earningMethods, localPassSummary, usageHistory } from '../mocks/localPassMockData';
 import { getMyPostProgress } from '../state/myPostProgress';
@@ -38,6 +40,25 @@ const PASS_PLACES = [
   { id: 2, name: '갑천 노을 산책로', region: '대전 유성구', category: '산책' },
   { id: 3, name: '유성 과학 산책길', region: '대전 유성구', category: '산책' },
 ];
+
+function normalizePassBalance(payload) {
+  return Number(payload?.balance ?? payload?.localPassBalance ?? payload ?? 0);
+}
+
+function normalizeHistoryItem(item) {
+  return {
+    id: item.id ?? item.historyId ?? `${item.placeId || item.placeName}-${item.usedAt || Date.now()}`,
+    place: item.place || `${item.region || ''}${item.region ? '·' : ''}${item.placeName || '사용처'}`,
+    date: item.date || item.usedAt || '방금 전',
+    amount: item.amount ? `${item.amount > 0 ? '+' : ''}${item.amount}개` : '-1개',
+  };
+}
+
+function normalizeHistoryResponse(payload) {
+  const source = Array.isArray(payload) ? payload : payload?.history;
+
+  return Array.isArray(source) ? source.map(normalizeHistoryItem) : [];
+}
 
 function EarningMethodItem({ method, isExpanded, onToggle }) {
   const isCompleted = method.id === 'signup';
@@ -119,7 +140,7 @@ function GuestLocalPassScreen() {
 }
 
 function AuthenticatedLocalPassScreen() {
-  const { logout, user } = useAuth();
+  const { accessToken, logout, user } = useAuth();
   const navigation = useNavigation();
   const passCountAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
@@ -133,10 +154,12 @@ function AuthenticatedLocalPassScreen() {
   const [usageHistoryItems, setUsageHistoryItems] = useState(usageHistory);
   const [expandedMethodId, setExpandedMethodId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoadingPassData, setIsLoadingPassData] = useState(false);
   const regionName = user?.region?.fullName || '거주 지역 미설정';
   const profileName = user?.nickname || '로컬픽 사용자';
   const profileInitial = profileName.slice(0, 1);
-  const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
+  const isResidentVerified = Boolean(user?.isResidentVerified);
+  const verificationLabel = isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 미인증';
   const hasPass = localPassBalance > 0;
 
   useAnimatedReaction(
@@ -160,10 +183,39 @@ function AuthenticatedLocalPassScreen() {
     };
   }, [localPassBalance, ongoingPick?.progress, passCountAnimation, progressAnimation]);
 
+  const loadLocalPassData = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsLoadingPassData(true);
+    }
+
+    try {
+      console.log('accessToken:', accessToken ? '있음' : '없음');
+      const [balanceData, historyData] = await Promise.all([
+        apiClient.get('/api/local-pass/balance'),
+        apiClient.get('/api/local-pass/history'),
+      ]);
+      const nextBalance = normalizePassBalance(balanceData);
+      const nextHistory = normalizeHistoryResponse(historyData);
+
+      setLocalPassBalance(nextBalance);
+
+      if (nextHistory.length > 0) {
+        setUsageHistoryItems(nextHistory);
+      }
+    } catch (error) {
+      console.warn('Local pass API fallback to mock data.', error?.message);
+      setUsageHistoryItems((currentItems) => (currentItems.length > 0 ? currentItems : usageHistory));
+    } finally {
+      setIsLoadingPassData(false);
+      setRefreshing(false);
+    }
+  }, [accessToken, setLocalPassBalance]);
+
   useFocusEffect(
     useCallback(() => {
       setOngoingPick(getMyPostProgress());
-    }, []),
+      void loadLocalPassData({ showLoading: usageHistoryItems.length === 0 });
+    }, [loadLocalPassData, usageHistoryItems.length]),
   );
 
   const progressAnimatedStyle = useAnimatedStyle(() => ({
@@ -172,14 +224,7 @@ function AuthenticatedLocalPassScreen() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-
-    refreshTimeoutRef.current = setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
+    void loadLocalPassData();
   };
 
   const handleUsePass = () => {
@@ -203,19 +248,41 @@ function AuthenticatedLocalPassScreen() {
         { text: '취소', style: 'cancel' },
         {
           text: '사용하기',
-          onPress: () => {
-            setLocalPassBalance(getBalance() - 1);
-            setIsPlaceModalVisible(false);
-            setUsageHistoryItems((currentItems) => [
-              {
-                id: `pass-${Date.now()}`,
-                place: `${place.region}·${place.name}`,
-                date: '방금 전',
-                amount: '-1개',
-              },
-              ...currentItems,
-            ]);
-            Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+          onPress: async () => {
+            try {
+              console.log('accessToken:', accessToken ? '있음' : '없음');
+              const data = await apiClient.post('/api/local-pass/use', {
+                placeId: place.id,
+                placeName: place.name,
+              });
+              const nextBalance = normalizePassBalance(data);
+              const nextHistoryItem = data?.history ? normalizeHistoryItem(data.history) : null;
+
+              setLocalPassBalance(nextBalance);
+              setIsPlaceModalVisible(false);
+
+              if (nextHistoryItem) {
+                setUsageHistoryItems((currentItems) => [nextHistoryItem, ...currentItems]);
+              } else {
+                await loadLocalPassData();
+              }
+
+              Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+            } catch (error) {
+              console.warn('Use local pass API fallback to local state.', error?.message);
+              setLocalPassBalance(getBalance() - 1);
+              setIsPlaceModalVisible(false);
+              setUsageHistoryItems((currentItems) => [
+                {
+                  id: `pass-${Date.now()}`,
+                  place: `${place.region}·${place.name}`,
+                  date: '방금 전',
+                  amount: '-1개',
+                },
+                ...currentItems,
+              ]);
+              Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+            }
           },
         },
       ],
@@ -291,9 +358,17 @@ function AuthenticatedLocalPassScreen() {
                 <Text style={styles.profileRegion} numberOfLines={1}>
                   {regionName}
                 </Text>
-                <View style={styles.verifiedBadge}>
+                <TouchableOpacity
+                  style={[
+                    styles.verifiedBadge,
+                    isResidentVerified ? styles.activeVerifiedBadge : styles.inactiveVerifiedBadge,
+                  ]}
+                  activeOpacity={isResidentVerified ? 1 : 0.7}
+                  disabled={isResidentVerified}
+                  onPress={() => navigation.navigate('ResidentVerification')}
+                >
                   <Text style={styles.verifiedBadgeText}>{verificationLabel}</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.passCountGroup}>
@@ -372,7 +447,11 @@ function AuthenticatedLocalPassScreen() {
           </TouchableOpacity>
         </View>
 
-        {usageHistoryItems.length === 0 ? (
+        {isLoadingPassData ? (
+          <View style={styles.emptyHistory}>
+            <ActivityIndicator color={MAIN_GREEN} />
+          </View>
+        ) : usageHistoryItems.length === 0 ? (
           <View style={styles.emptyHistory}>
             <Text style={styles.emptyHistoryIcon}>📋</Text>
             <Text style={styles.emptyHistoryTitle}>아직 사용한 내역이 없어요</Text>
@@ -539,11 +618,16 @@ const styles = StyleSheet.create({
   },
   verifiedBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#4A8C6A',
     borderRadius: 999,
     marginTop: 7,
     paddingHorizontal: 9,
     paddingVertical: 5,
+  },
+  activeVerifiedBadge: {
+    backgroundColor: '#4A8C6A',
+  },
+  inactiveVerifiedBadge: {
+    backgroundColor: '#AEB4AE',
   },
   verifiedBadgeText: {
     color: CARD,

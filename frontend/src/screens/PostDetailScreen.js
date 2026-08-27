@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 
+import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { setPostCommentCount } from '../state/postCommentCounts';
 import { setPostLikeCount } from '../state/postLikeCounts';
@@ -79,6 +80,24 @@ function writeOngoingPick(post, likes, progress) {
   });
 }
 
+function normalizeComment(comment) {
+  return {
+    id: comment.id ?? comment.commentId ?? Date.now(),
+    author: comment.author?.nickname || comment.authorName || comment.author || '로컬픽 사용자',
+    isResident: Boolean(comment.isResident ?? comment.author?.isResidentVerified),
+    content: comment.content || '',
+    time: comment.time || comment.createdAt || '방금 전',
+    likes: Number(comment.likes ?? comment.likeCount ?? 0),
+    isLiked: Boolean(comment.isLiked ?? comment.likedByMe),
+  };
+}
+
+function normalizeCommentsResponse(payload) {
+  const source = Array.isArray(payload) ? payload : payload?.comments;
+
+  return Array.isArray(source) ? source.map(normalizeComment) : [];
+}
+
 function CommentCard({ comment, onToggleLike }) {
   return (
     <View style={styles.commentCard}>
@@ -127,7 +146,29 @@ export default function PostDetailScreen({ navigation, route }) {
   const categoryTag = post?.categoryTag || '기타';
   const isCommentEmpty = !commentText.trim();
 
-  const handleToggleLike = () => {
+  const loadComments = useCallback(async () => {
+    if (!post?.id) {
+      return;
+    }
+
+    try {
+      const data = await apiClient.get(`/api/posts/${post.id}/comments`);
+      const nextComments = normalizeCommentsResponse(data);
+
+      if (nextComments.length > 0 || post.comments === 0) {
+        setComments(nextComments);
+        setPostCommentCount(post.id, nextComments.length);
+      }
+    } catch (error) {
+      console.warn('Comments API fallback to local comments.', error?.message);
+    }
+  }, [post?.comments, post?.id]);
+
+  useEffect(() => {
+    void loadComments();
+  }, [loadComments]);
+
+  const handleToggleLike = async () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsLiked((current) => {
       const nextIsLiked = !current;
@@ -147,15 +188,32 @@ export default function PostDetailScreen({ navigation, route }) {
 
       return nextIsLiked;
     });
+
+    try {
+      const likeData = await apiClient.post(`/api/posts/${post?.id}/like`);
+      const nextLikes = Number(likeData?.likes ?? likeData?.likeCount ?? likeCount);
+      const nextIsLiked = Boolean(likeData?.isLiked ?? likeData?.likedByMe ?? isLiked);
+      const nextProgress = Math.min(
+        100,
+        Math.round((nextLikes / (post?.targetLikes ?? TARGET_LIKES)) * 100),
+      );
+
+      setIsLiked(nextIsLiked);
+      setLikeCount(nextLikes);
+      setProgress(nextProgress);
+      setPostLikeCount(post?.id, nextLikes, nextIsLiked);
+    } catch (error) {
+      console.warn('Post detail like API failed. Keeping local optimistic state.', error?.message);
+    }
   };
 
-  const handleSendComment = () => {
+  const handleSendComment = async () => {
     if (isCommentEmpty) {
       Alert.alert('내용을 입력해주세요', '댓글 내용을 작성해주세요.');
       return;
     }
 
-    const nextComment = {
+    const fallbackComment = {
       id: Date.now(),
       author: user?.nickname || '나',
       isResident: true,
@@ -164,14 +222,31 @@ export default function PostDetailScreen({ navigation, route }) {
       likes: 0,
       isLiked: false,
     };
-    setComments((currentComments) => {
-      const nextComments = [nextComment, ...currentComments];
+    try {
+      const data = await apiClient.post(`/api/posts/${post?.id}/comments`, {
+        content: commentText.trim(),
+      });
+      const nextComment = normalizeComment(data?.comment || data);
 
-      setPostCommentCount(post?.id, nextComments.length);
-      return nextComments;
-    });
-    setCommentText('');
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setComments((currentComments) => {
+        const nextComments = [nextComment, ...currentComments];
+
+        setPostCommentCount(post?.id, nextComments.length);
+        return nextComments;
+      });
+      setCommentText('');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('Create comment API fallback to local comment.', error?.message);
+      setComments((currentComments) => {
+        const nextComments = [fallbackComment, ...currentComments];
+
+        setPostCommentCount(post?.id, nextComments.length);
+        return nextComments;
+      });
+      setCommentText('');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const handleToggleCommentLike = (commentId) => {
