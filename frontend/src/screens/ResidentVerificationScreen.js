@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +15,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
+import apiClient from '../api/apiClient';
+import { verifyResident } from '../api/authApi';
 import { getReverseGeocoding } from '../api/kakaoApi';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,6 +26,53 @@ const CARD = '#FFFFFF';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
+const GRAY = '#8A918A';
+
+function getVerifyCountLabel(verifyCount) {
+  if (verifyCount <= 0) {
+    return '아직 인증 전';
+  }
+
+  if (verifyCount === 1) {
+    return '첫 번째 인증 완료';
+  }
+
+  if (verifyCount === 2) {
+    return '두 번째 인증 완료';
+  }
+
+  return '거주자 인증 유지 중';
+}
+
+function getNextVerifyInfo(nextVerifyDate) {
+  if (!nextVerifyDate) {
+    return {
+      isAvailable: true,
+      label: '지금 인증 가능해요 ✓',
+      tone: 'active',
+    };
+  }
+
+  const today = new Date();
+  const targetDate = new Date(nextVerifyDate);
+
+  today.setHours(0, 0, 0, 0);
+  targetDate.setHours(0, 0, 0, 0);
+
+  if (targetDate.getTime() <= today.getTime()) {
+    return {
+      isAvailable: true,
+      label: targetDate.getTime() === today.getTime() ? '지금 인증 가능해요 ✓' : '인증 가능 기간이에요',
+      tone: 'active',
+    };
+  }
+
+  return {
+    isAvailable: false,
+    label: `다음 인증 가능일: ${nextVerifyDate}`,
+    tone: 'inactive',
+  };
+}
 
 function parseRegionText(regionText) {
   const [sidoName, ...sigunguParts] = regionText.trim().split(/\s+/);
@@ -40,9 +90,49 @@ export default function ResidentVerificationScreen({ navigation }) {
   const [step, setStep] = useState(1);
   const [regionInput, setRegionInput] = useState('');
   const [confirmedCount, setConfirmedCount] = useState(0);
+  const [residentStatus, setResidentStatus] = useState({
+    isVerified: false,
+    verifyCount: 0,
+    lastVerifyDate: null,
+    nextVerifyDate: null,
+    badgeStatus: 'inactive',
+  });
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const trimmedRegion = regionInput.trim();
   const canContinue = trimmedRegion.length > 0;
+  const nextVerifyDate = residentStatus.nextVerifyDate;
+  const isBadgeActive = residentStatus.badgeStatus === 'active' || residentStatus.isVerified;
+  const statusVerifyCount = residentStatus.verifyCount ?? confirmedCount;
+  const verifyCountLabel = getVerifyCountLabel(Number(statusVerifyCount || 0));
+  const nextVerifyInfo = getNextVerifyInfo(nextVerifyDate);
+  const isVerifyLocked = !nextVerifyInfo.isAvailable;
+  const verifyButtonText = isVerifyLocked
+    ? `다음 인증 가능일: ${nextVerifyDate}`
+    : '지금 위치 인증하기';
+
+  const loadResidentStatus = useCallback(async () => {
+    setIsLoadingStatus(true);
+
+    try {
+      const status = await apiClient.get('/api/auth/resident-status');
+
+      setResidentStatus((currentStatus) => ({
+        ...currentStatus,
+        ...status,
+        badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
+      }));
+      setConfirmedCount(Number(status?.verifyCount ?? 0));
+    } catch (error) {
+      console.warn('Resident status API fallback to local state.', error?.message);
+    } finally {
+      setIsLoadingStatus(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadResidentStatus();
+  }, [loadResidentStatus]);
 
   const handleNext = () => {
     if (!canContinue) {
@@ -53,7 +143,7 @@ export default function ResidentVerificationScreen({ navigation }) {
   };
 
   const handleVerifyLocation = async () => {
-    if (isCheckingLocation) {
+    if (isCheckingLocation || isVerifyLocked) {
       return;
     }
 
@@ -95,11 +185,23 @@ export default function ResidentVerificationScreen({ navigation }) {
         verification?.verifyCount ?? confirmedCount + 1,
       );
       setConfirmedCount(nextCount);
+      setResidentStatus((currentStatus) => ({
+        ...currentStatus,
+        ...verification,
+        verifyCount: nextCount,
+        badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
+      }));
+      await updateUser({
+        isResidentVerified: Boolean(verification?.isVerified),
+        badgeStatus: verification?.badgeStatus,
+        nextVerifyDate: verification?.nextVerifyDate,
+        verifyCount: nextCount,
+      });
 
       if (verification?.isVerified) {
         Alert.alert(
-          '거주자 인증 완료! 🎉',
-          '거주자 배지가 부여됐어요.',
+          '인증 완료! 🎉',
+          `거주자 배지가 ${verification?.badgeStatus === 'active' ? '활성화' : '곧 활성화'}됩니다.\n다음 인증일: ${verification?.nextVerifyDate || '추후 안내'}`,
           [
             {
               text: '확인',
@@ -109,8 +211,18 @@ export default function ResidentVerificationScreen({ navigation }) {
             },
           ],
         );
+      } else {
+        void loadResidentStatus();
       }
     } catch (error) {
+      if (error?.code === 'A007') {
+        Alert.alert(
+          '인증 불가',
+          `아직 인증 기간이 아니에요.\n다음 인증 가능일: ${error?.data?.nextVerifyDate || nextVerifyDate || '확인 필요'}`,
+        );
+        return;
+      }
+
       Alert.alert('위치 확인 실패', error?.message || '잠시 후 다시 시도해주세요.');
     } finally {
       setIsCheckingLocation(false);
@@ -137,7 +249,40 @@ export default function ResidentVerificationScreen({ navigation }) {
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.statusCard}>
+            <View style={styles.statusHeader}>
+              <Text style={styles.statusTitle}>인증 현황</Text>
+              {isLoadingStatus && <ActivityIndicator size="small" color={MAIN_GREEN} />}
+            </View>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>현재 인증 횟수</Text>
+              <Text style={styles.statusValue}>{verifyCountLabel}</Text>
+            </View>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>다음 인증 가능 날짜</Text>
+              <Text
+                style={[
+                  styles.statusValue,
+                  nextVerifyInfo.tone === 'active' ? styles.activeStatusValue : styles.inactiveStatusValue,
+                ]}
+              >
+                {nextVerifyInfo.label}
+              </Text>
+            </View>
+            <View style={[styles.badgeState, isBadgeActive ? styles.activeBadgeState : styles.inactiveBadgeState]}>
+              <Text style={[styles.badgeStateText, isBadgeActive ? styles.activeBadgeStateText : styles.inactiveBadgeStateText]}>
+                {isBadgeActive ? '거주자 배지 활성 ✓' : '거주자 배지 비활성'}
+              </Text>
+            </View>
+            <Text style={styles.policyText}>처음 2회는 1주 간격으로 인증해주세요</Text>
+            <Text style={styles.policyText}>이후 매월 1회 인증으로 배지를 유지해요</Text>
+          </View>
+
           <View style={styles.stepCard}>
             <Text style={styles.stepLabel}>Step {step}/2</Text>
             <View style={styles.stepTrack}>
@@ -180,23 +325,26 @@ export default function ResidentVerificationScreen({ navigation }) {
               <Text style={styles.subtitle}>7일 안에 3회 위치 확인이 필요해요</Text>
               <View style={styles.progressBox}>
                 <Text style={styles.progressLabel}>현재 진행</Text>
-                <Text style={styles.progressValue}>{confirmedCount}/3 회 완료</Text>
+                <Text style={styles.progressValue}>{statusVerifyCount}/3 회 완료</Text>
               </View>
               <TouchableOpacity
-                style={[styles.primaryButton, isCheckingLocation && styles.disabledButton]}
+                style={[
+                  styles.primaryButton,
+                  (isCheckingLocation || isVerifyLocked) && styles.disabledButton,
+                ]}
                 activeOpacity={0.7}
-                disabled={isCheckingLocation}
+                disabled={isCheckingLocation || isVerifyLocked}
                 onPress={handleVerifyLocation}
               >
                 {isCheckingLocation ? (
                   <ActivityIndicator color={CARD} />
                 ) : (
-                  <Text style={styles.primaryButtonText}>지금 위치 확인하기</Text>
+                  <Text style={styles.primaryButtonText}>{verifyButtonText}</Text>
                 )}
               </TouchableOpacity>
             </View>
           )}
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -233,8 +381,77 @@ const styles = StyleSheet.create({
     width: 44,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
+  },
+  statusCard: {
+    backgroundColor: CARD,
+    borderRadius: 8,
+    marginBottom: 18,
+    padding: 16,
+  },
+  statusHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  statusTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+  },
+  statusLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  statusValue: {
+    color: TEXT_PRIMARY,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  activeStatusValue: {
+    color: MAIN_GREEN,
+  },
+  inactiveStatusValue: {
+    color: GRAY,
+  },
+  badgeState: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  activeBadgeState: {
+    backgroundColor: '#E7EFE9',
+  },
+  inactiveBadgeState: {
+    backgroundColor: '#ECEDEE',
+  },
+  badgeStateText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  activeBadgeStateText: {
+    color: MAIN_GREEN,
+  },
+  inactiveBadgeStateText: {
+    color: GRAY,
+  },
+  policyText: {
+    color: '#7A9B8A',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+    marginTop: 8,
   },
   stepCard: {
     backgroundColor: CARD,

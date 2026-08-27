@@ -12,7 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
-import { fetchDevVisitorHotLocals, fetchWeeklyHotLocals } from '../api/predictionApi';
+import apiClient from '../api/apiClient';
+import { normalizeHotLocalResponse } from '../api/predictionApi';
 import { useAuth } from '../contexts/AuthContext';
 import { hotLocalData } from '../mocks/hotLocalMockData';
 
@@ -30,7 +31,6 @@ const metricColors = {
   orange: ORANGE,
   red: RED,
 };
-const shouldUseDevVisitorApi = process.env.EXPO_PUBLIC_APP_ENV !== 'production';
 
 function getDaysUntilNextMonday() {
   const today = new Date();
@@ -146,38 +146,22 @@ export default function HotLocalScreen() {
       progressAnimation.value = 0;
 
       try {
-        const data = shouldUseDevVisitorApi
-          ? await fetchDevVisitorHotLocals()
-          : await fetchWeeklyHotLocals();
+        const payload = await apiClient.get('/api/predictions/featured', { skipAuth: true });
+        const data = normalizeHotLocalResponse(payload);
 
         if (isMounted && data?.rankOne) {
           setWeeklyHotLocalData(data);
           return;
         }
 
-        throw new Error('Hot local API returned empty data.');
-      } catch (devApiError) {
-        try {
-          if (!shouldUseDevVisitorApi) {
-            throw devApiError;
-          }
-
-          const data = await fetchWeeklyHotLocals();
-
-          if (isMounted && data?.rankOne) {
-            setWeeklyHotLocalData(data);
-            return;
-          }
-
-          throw new Error('Weekly hot local API returned empty hot local data.');
-        } catch {
-          if (!isMounted) {
-            return;
-          }
-
-          console.warn('Hot local API fallback to mock data.', devApiError?.message);
-          setWeeklyHotLocalData(hotLocalData);
+        throw new Error('Regions hot API returned empty data.');
+      } catch (error) {
+        if (!isMounted) {
+          return;
         }
+
+        console.warn('Hot local API fallback to mock data.', error?.message);
+        setWeeklyHotLocalData(hotLocalData);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -265,7 +249,9 @@ export default function HotLocalScreen() {
         </View>
 
         {isLoading ? (
-          <View style={styles.rankOnePlaceholder} />
+          <View style={styles.rankOnePlaceholder}>
+            <ActivityIndicator color={MAIN_GREEN} />
+          </View>
         ) : !rankOne ? (
           <View style={styles.emptyState}>
             <ActivityIndicator color={MAIN_GREEN} />
@@ -373,8 +359,10 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   rankOnePlaceholder: {
+    alignItems: 'center',
     backgroundColor: '#E0E0E0',
     borderRadius: 8,
+    justifyContent: 'center',
     minHeight: 456,
   },
   emptyState: {

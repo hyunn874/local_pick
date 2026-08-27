@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -19,6 +20,7 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 
+import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { initialPosts } from '../mocks/chatRoomMockData';
 import { getPostCommentCounts } from '../state/postCommentCounts';
@@ -31,8 +33,42 @@ const CARD = '#FFFFFF';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
+const ORANGE = '#D88A24';
+const GRAY = '#8A918A';
 const AGE_TAGS = ['20대', '30-40대', '50대+'];
 const TARGET_LIKES = 30;
+
+function normalizePost(post) {
+  const likes = Number(post.likes ?? post.likeCount ?? 0);
+  const targetLikes = Number(post.targetLikes ?? TARGET_LIKES);
+
+  return {
+    id: post.id ?? post.postId,
+    author: post.author?.nickname || post.authorName || post.author || '로컬픽 사용자',
+    isResident: Boolean(post.isResident ?? post.author?.isResidentVerified),
+    time: post.time || post.createdAt || '방금 전',
+    image: post.image || post.imageUrl,
+    imageUrl: post.imageUrl || post.image,
+    ageTag: post.ageTag || post.generationTag || '전체',
+    generationTag: post.generationTag || post.ageTag || '전체',
+    categoryTag: post.categoryTag || post.category || '기타',
+    title: post.title || post.content || '제목 없음',
+    content: post.content || '',
+    progress: Number(post.progress ?? Math.min(100, Math.round((likes / targetLikes) * 100))),
+    likes,
+    comments: Number(post.comments ?? post.commentCount ?? 0),
+    targetLikes,
+    isMine: Boolean(post.isMine ?? post.mine),
+    isLiked: Boolean(post.isLiked ?? post.likedByMe),
+    likedByMe: Boolean(post.likedByMe ?? post.isLiked),
+  };
+}
+
+function normalizePostsResponse(payload) {
+  const source = Array.isArray(payload) ? payload : payload?.posts;
+
+  return Array.isArray(source) ? source.map(normalizePost) : [];
+}
 
 function getResidenceName(user) {
   if (typeof user?.region === 'string') {
@@ -40,6 +76,36 @@ function getResidenceName(user) {
   }
 
   return user?.region?.fullName || user?.district || '내 동네';
+}
+
+function getResidentBadgeInfo(user) {
+  const badgeStatus = user?.badgeStatus || (user?.isResidentVerified ? 'active' : 'inactive');
+  const verifyCount = Number(user?.verifyCount ?? 0);
+
+  if (badgeStatus === 'active') {
+    return {
+      isActive: true,
+      isPressable: false,
+      label: '거주자 ✓',
+      style: 'active',
+    };
+  }
+
+  if (verifyCount > 0) {
+    return {
+      isActive: false,
+      isPressable: true,
+      label: '인증 갱신 필요',
+      style: 'renewal',
+    };
+  }
+
+  return {
+    isActive: false,
+    isPressable: true,
+    label: '거주자 인증하기',
+    style: 'inactive',
+  };
 }
 
 function writeOngoingPick(post) {
@@ -124,12 +190,13 @@ function PostCard({ post, onPress, onShare, onToggleLike }) {
 }
 
 export default function ChatRoomScreen() {
-  const { user } = useAuth();
+  const { accessToken, user } = useAuth();
   const navigation = useNavigation();
   const inputRef = useRef(null);
   const searchInputRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const [posts, setPosts] = useState(initialPosts);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedAgeTag, setSelectedAgeTag] = useState('전체');
   const [selectedCategory] = useState('기타');
@@ -138,10 +205,10 @@ export default function ChatRoomScreen() {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const regionName = getResidenceName(user);
-  const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
+  const residentBadgeInfo = getResidentBadgeInfo(user);
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
-  const isResidentVerified = Boolean(user?.isResidentVerified);
+  const isResidentVerified = residentBadgeInfo.isActive;
   const visiblePosts = normalizedSearchText
     ? posts.filter((post) =>
         `${post.title} ${post.content} ${post.categoryTag}`
@@ -158,8 +225,34 @@ export default function ChatRoomScreen() {
     };
   }, []);
 
+  const loadPosts = useCallback(async ({ showLoading = false } = {}) => {
+    if (showLoading) {
+      setIsLoadingPosts(true);
+    }
+
+    try {
+      console.log('accessToken:', accessToken ? '있음' : '없음');
+      const data = await apiClient.get('/api/posts', {
+        params: { region: regionName },
+      });
+      const nextPosts = normalizePostsResponse(data);
+
+      if (nextPosts.length > 0) {
+        setPosts(nextPosts);
+      }
+    } catch (error) {
+      console.warn('Posts API fallback to mock data.', error?.message);
+      setPosts((currentPosts) => (currentPosts.length > 0 ? currentPosts : initialPosts));
+    } finally {
+      setIsLoadingPosts(false);
+      setRefreshing(false);
+    }
+  }, [accessToken, regionName]);
+
   useFocusEffect(
     useCallback(() => {
+      void loadPosts({ showLoading: posts.length === 0 });
+
       const commentCounts = getPostCommentCounts();
       const likeCounts = getPostLikeCounts();
 
@@ -185,7 +278,7 @@ export default function ChatRoomScreen() {
           };
         }),
       );
-    }, []),
+    }, [loadPosts, posts.length]),
   );
 
   const handlePostPress = (post) => {
@@ -205,8 +298,9 @@ export default function ChatRoomScreen() {
     });
   };
 
-  const handleToggleLike = (postId) => {
+  const handleToggleLike = async (postId) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const currentPost = posts.find((post) => post.id === postId);
 
     setPosts((currentPosts) =>
       currentPosts.map((post) => {
@@ -235,6 +329,39 @@ export default function ChatRoomScreen() {
         return nextPost;
       }),
     );
+
+    try {
+      console.log('accessToken:', accessToken ? '있음' : '없음');
+      const likeData = await apiClient.post(`/api/posts/${postId}/like`);
+
+      setPosts((currentPosts) =>
+        currentPosts.map((post) => {
+          if (post.id !== postId) {
+            return post;
+          }
+
+          const nextLikes = Number(likeData?.likes ?? likeData?.likeCount ?? post.likes);
+          const nextLiked = Boolean(likeData?.isLiked ?? likeData?.likedByMe ?? post.isLiked);
+
+          return {
+            ...post,
+            likes: nextLikes,
+            isLiked: nextLiked,
+            likedByMe: nextLiked,
+            progress: Math.min(
+              100,
+              Math.round((nextLikes / (post.targetLikes ?? TARGET_LIKES)) * 100),
+            ),
+          };
+        }),
+      );
+    } catch (error) {
+      console.warn('Post like API failed. Keeping local optimistic state.', error?.message);
+
+      if (!currentPost) {
+        return;
+      }
+    }
   };
 
   const handlePickImage = async () => {
@@ -257,7 +384,7 @@ export default function ChatRoomScreen() {
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!isResidentVerified) {
       Alert.alert(
         '거주자 인증이 필요해요',
@@ -279,7 +406,15 @@ export default function ChatRoomScreen() {
     }
 
     const inputText = message.trim();
-    const newPost = {
+    const requestBody = {
+      title: inputText,
+      content: inputText,
+      ageTag: selectedAgeTag || '전체',
+      categoryTag: selectedCategory || '기타',
+      region: regionName,
+      image: selectedImageUri,
+    };
+    const fallbackPost = {
       id: Date.now(),
       author: user?.nickname || '나',
       isResident: true,
@@ -300,11 +435,25 @@ export default function ChatRoomScreen() {
       likedByMe: false,
     };
 
-    setPosts((currentPosts) => [newPost, ...currentPosts]);
-    writeOngoingPick(newPost);
-    setMessage('');
-    setSelectedImageUri(null);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      console.log('accessToken:', accessToken ? '있음' : '없음');
+      const data = await apiClient.post('/api/posts', requestBody);
+      const newPost = normalizePost(data?.post || data);
+
+      setPosts((currentPosts) => [newPost, ...currentPosts]);
+      writeOngoingPick(newPost);
+      setMessage('');
+      setSelectedImageUri(null);
+      await loadPosts();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('Create post API fallback to local post.', error?.message);
+      setPosts((currentPosts) => [fallbackPost, ...currentPosts]);
+      writeOngoingPick(fallbackPost);
+      setMessage('');
+      setSelectedImageUri(null);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const handleFocusComposer = () => {
@@ -313,14 +462,7 @@ export default function ChatRoomScreen() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-
-    if (refreshTimeoutRef.current) {
-      clearTimeout(refreshTimeoutRef.current);
-    }
-
-    refreshTimeoutRef.current = setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
+    void loadPosts();
   };
 
   return (
@@ -333,7 +475,28 @@ export default function ChatRoomScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>{regionName} 소통방</Text>
-            <Text style={styles.subtitle}>{verificationLabel}</Text>
+            <TouchableOpacity
+              style={[
+                styles.headerResidentBadge,
+                residentBadgeInfo.style === 'active' && styles.activeHeaderResidentBadge,
+                residentBadgeInfo.style === 'inactive' && styles.inactiveHeaderResidentBadge,
+                residentBadgeInfo.style === 'renewal' && styles.renewalHeaderResidentBadge,
+              ]}
+              activeOpacity={residentBadgeInfo.isPressable ? 0.7 : 1}
+              disabled={!residentBadgeInfo.isPressable}
+              onPress={() => navigation.navigate('ResidentVerification')}
+            >
+              <Text
+                style={[
+                  styles.headerResidentBadgeText,
+                  residentBadgeInfo.style === 'active' && styles.activeHeaderResidentBadgeText,
+                  residentBadgeInfo.style === 'inactive' && styles.inactiveHeaderResidentBadgeText,
+                  residentBadgeInfo.style === 'renewal' && styles.renewalHeaderResidentBadgeText,
+                ]}
+              >
+                {residentBadgeInfo.label}
+              </Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconButton} activeOpacity={0.7} onPress={handleSearchPress}>
@@ -385,7 +548,11 @@ export default function ChatRoomScreen() {
             />
           }
         >
-          {visiblePosts.length === 0 ? (
+          {isLoadingPosts ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color={MAIN_GREEN} />
+            </View>
+          ) : visiblePosts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>📍</Text>
               <Text style={styles.emptyTitle}>
@@ -505,6 +672,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     marginTop: 5,
+  },
+  headerResidentBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    marginTop: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  activeHeaderResidentBadge: {
+    backgroundColor: '#E7EFE9',
+  },
+  inactiveHeaderResidentBadge: {
+    backgroundColor: '#ECEDEE',
+  },
+  renewalHeaderResidentBadge: {
+    backgroundColor: '#F8E7D0',
+  },
+  headerResidentBadgeText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  activeHeaderResidentBadgeText: {
+    color: MAIN_GREEN,
+  },
+  inactiveHeaderResidentBadgeText: {
+    color: GRAY,
+  },
+  renewalHeaderResidentBadgeText: {
+    color: ORANGE,
   },
   headerActions: {
     flexDirection: 'row',
@@ -727,6 +923,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: CARD,
     borderRadius: 8,
+    padding: 24,
+  },
+  loadingState: {
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderRadius: 8,
+    minHeight: 180,
+    justifyContent: 'center',
     padding: 24,
   },
   emptyIcon: {

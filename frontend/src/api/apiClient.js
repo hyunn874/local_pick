@@ -1,15 +1,16 @@
 /**
  * 로컬픽 백엔드 API 설정.
  *
- * 기본값은 Render 배포 서버다. 로컬 백엔드로 붙이려면 .env 에 주소를 지정한다.
+ * 기본값은 Fly.io 배포 서버다. 로컬 백엔드로 붙이려면 .env 에 주소를 지정한다.
  *   iOS 시뮬레이터   : EXPO_PUBLIC_API_BASE_URL=http://localhost:8080
  *   Android 에뮬레이터: EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8080
  *   실기기(Expo Go)  : EXPO_PUBLIC_API_BASE_URL=http://<개발PC LAN IP>:8080
  *
- * 참고: Render 무료 플랜은 15분 무활동 시 서버가 잠든다.
+ * 참고: 무료 배포 환경은 무활동 시 서버가 잠들 수 있다.
  * 첫 요청이 30초~1분 걸릴 수 있으므로 timeout을 넉넉히 잡는다.
  */
-const PRODUCTION_BASE_URL = 'https://localpick-api.onrender.com';
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://localpick-api.fly.dev';
+const PRODUCTION_BASE_URL = 'https://localpick-api.fly.dev';
 const DEFAULT_TIMEOUT_MS = process.env.EXPO_PUBLIC_APP_ENV === 'production' ? 75000 : 60000;
 
 function resolveBaseUrl() {
@@ -19,7 +20,7 @@ function resolveBaseUrl() {
     return fromEnv.replace(/\/+$/, '');
   }
 
-  return PRODUCTION_BASE_URL;
+  return BASE_URL.replace(/\/+$/, '');
 }
 
 export const API_BASE_URL = resolveBaseUrl();
@@ -94,10 +95,17 @@ async function parsePayload(response) {
 
 function unwrapPayload(payload, response) {
   if (!response.ok || payload?.success === false) {
-    throw new ApiError(payload?.message ?? `요청에 실패했습니다. (HTTP ${response.status})`, {
+    const fallbackMessage =
+      response.status === 401
+        ? '로그인이 만료됐어요. 다시 로그인해주세요.'
+        : response.status === 403
+          ? '접근 권한이 없어요.'
+          : `요청에 실패했습니다. (HTTP ${response.status})`;
+
+    throw new ApiError(payload?.message ?? payload?.error?.message ?? fallbackMessage, {
       status: response.status,
       data: payload,
-      code: payload?.code,
+      code: payload?.code ?? payload?.error?.code,
     });
   }
 
@@ -120,16 +128,20 @@ export async function requestApi(path, options = {}) {
     ...fetchOptions
   } = options;
   const url = buildUrl(path, params);
+  const endpoint = path;
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
   async function sendRequest() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const accessToken = skipAuth ? null : authHandlers.getAccessToken?.();
+    const token = accessToken;
+    console.log('[API] endpoint:', endpoint);
+    console.log('[API] token 있음:', !!token);
     const requestHeaders = {
       Accept: 'application/json',
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     };
 

@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { deleteMyAccount } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 
 const BACKGROUND = '#F8F6F1';
@@ -39,7 +40,7 @@ function MenuRow({
 }
 
 export default function SettingsScreen({ navigation }) {
-  const { accessToken, logout } = useAuth();
+  const { logout, resetAuthState } = useAuth();
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃 하시겠어요?', [
@@ -65,23 +66,17 @@ export default function SettingsScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch('https://localpick-api.fly.dev/api/users/me', {
-                method: 'DELETE',
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                  'Content-Type': 'application/json',
-                },
+              await deleteMyAccount();
+              await resetAuthState();
+
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'AuthGate' }],
               });
-
-              if (!response.ok) {
-                throw new Error(String(response.status));
-              }
-
-              await logout();
 
               Alert.alert('탈퇴 완료', '그동안 로컬픽을 이용해주셔서 감사해요.');
             } catch (error) {
-              if (error.message.includes('403')) {
+              if (error?.status === 403 || error?.message?.includes('403')) {
                 Alert.alert('탈퇴 실패', '이미 탈퇴한 계정이에요.');
               } else {
                 Alert.alert('오류', '탈퇴 처리 중 문제가 발생했어요. 다시 시도해주세요.');

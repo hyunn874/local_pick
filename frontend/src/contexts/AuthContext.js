@@ -5,12 +5,16 @@ import apiClient from '../api/apiClient';
 import {
   completeOnboarding as completeOnboardingApi,
   fetchMe,
+  loginWithAppleIdentityToken,
   refreshTokens,
 } from '../api/authApi';
 import { signInWithApple } from '../api/appleApi';
 import { signInWithKakao } from '../api/kakaoAuthApi';
 
 const AUTH_STORAGE_KEY = 'localpick.auth';
+const SECURE_STORE_KEYS = [
+  AUTH_STORAGE_KEY,
+];
 
 const DEV_USER = {
   id: 'dev-user-1',
@@ -47,11 +51,15 @@ async function writeStoredAuth(authState) {
 }
 
 async function clearStoredAuth() {
-  try {
-    await SecureStore.deleteItemAsync(AUTH_STORAGE_KEY);
-  } catch {
-    // 저장소 정리 실패는 다음 로그인 시 덮어쓴다.
-  }
+  await Promise.all(
+    SECURE_STORE_KEYS.map(async (key) => {
+      try {
+        await SecureStore.deleteItemAsync(key);
+      } catch {
+        // 저장소 정리 실패는 다음 로그인 시 덮어쓴다.
+      }
+    }),
+  );
 }
 
 export function AuthProvider({ children }) {
@@ -98,12 +106,14 @@ export function AuthProvider({ children }) {
   }, [syncTokenRefs]);
 
   const applyAuth = useCallback(async (nextAuthState) => {
+    const isNewMember = Boolean(nextAuthState.isNewMember ?? nextAuthState.isNewUser);
     const normalizedAuthState = {
       accessToken: nextAuthState.accessToken ?? null,
       refreshToken: nextAuthState.refreshToken ?? null,
       provider: nextAuthState.provider ?? 'kakao',
-      isNewUser: Boolean(nextAuthState.isNewUser),
-      isOnboarded: Boolean(nextAuthState.isOnboarded),
+      isNewMember,
+      isNewUser: isNewMember,
+      isOnboarded: nextAuthState.isOnboarded ?? !isNewMember,
       user: nextAuthState.user,
     };
 
@@ -128,6 +138,23 @@ export function AuthProvider({ children }) {
     await clearStoredAuth();
   }, [syncTokenRefs]);
 
+  const updateUser = useCallback(async (nextUserState) => {
+    const storedAuth = (await readStoredAuth()) || {};
+    const nextUser = {
+      ...(storedAuth.user || user || {}),
+      ...nextUserState,
+    };
+    const nextAuthState = {
+      ...storedAuth,
+      user: nextUser,
+    };
+
+    setUser(nextUser);
+    await writeStoredAuth(nextAuthState);
+
+    return nextUser;
+  }, [user]);
+
   const startGuestMode = useCallback(() => {
     setIsGuest(true);
   }, []);
@@ -150,33 +177,34 @@ export function AuthProvider({ children }) {
   }, [applyAuth]);
 
   const loginWithKakao = useCallback(async () => {
-    // 서버가 카카오 인증부터 JWT 발급까지 처리하고
-    // 딥링크로 토큰만 돌려준다. 사용자 정보는 포함되지 않는다.
-    const tokens = await signInWithKakao();
+    const authData = await signInWithKakao();
 
-    // fetchMe 가 Authorization 헤더를 붙일 수 있도록 ref 를 먼저 채운다.
-    // applyAuth 는 user 가 있어야 호출할 수 있어서 순서를 나눴다.
-    syncTokenRefs(tokens.accessToken, tokens.refreshToken);
+    syncTokenRefs(authData.accessToken, authData.refreshToken);
 
     let user;
 
-    try {
-      user = await fetchMe();
-    } catch (error) {
-      syncTokenRefs(null, null);
-      throw error;
-    }
+    if (authData.user) {
+      user = authData.user;
+    } else {
+      try {
+        user = await fetchMe();
+      } catch (error) {
+        syncTokenRefs(null, null);
+        throw error;
+      }
 
-    if (!user) {
-      syncTokenRefs(null, null);
-      throw new Error('로그인 응답을 확인할 수 없습니다.');
+      if (!user) {
+        syncTokenRefs(null, null);
+        throw new Error('로그인 응답을 확인할 수 없습니다.');
+      }
     }
 
     return applyAuth({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      isNewUser: tokens.isNewUser,
-      isOnboarded: tokens.isOnboarded,
+      accessToken: authData.accessToken,
+      refreshToken: authData.refreshToken,
+      isNewMember: authData.isNewMember,
+      isNewUser: authData.isNewUser,
+      isOnboarded: authData.isOnboarded,
       provider: 'kakao',
       user,
     });
@@ -191,9 +219,7 @@ export function AuthProvider({ children }) {
         throw new Error('Apple identity token을 받지 못했어요.');
       }
 
-      // 백엔드에 identityToken 을 보내 JWT 를 발급받는다.
-      const response = await apiClient.post('/api/auth/apple', { identityToken });
-      const authData = response?.data ?? response;
+      const authData = await loginWithAppleIdentityToken(identityToken);
 
       if (!authData?.accessToken || !authData?.refreshToken) {
         throw new Error('서버에서 토큰을 받지 못했어요.');
@@ -204,7 +230,7 @@ export function AuthProvider({ children }) {
 
       let userData;
       try {
-        userData = await fetchMe();
+        userData = authData.user || await fetchMe();
       } catch (meError) {
         syncTokenRefs(null, null);
         throw meError;
@@ -213,6 +239,7 @@ export function AuthProvider({ children }) {
       return applyAuth({
         accessToken: authData.accessToken,
         refreshToken: authData.refreshToken,
+        isNewMember: authData.isNewMember,
         isNewUser: authData.isNewUser,
         isOnboarded: authData.isOnboarded,
         provider: 'apple',
@@ -228,9 +255,22 @@ export function AuthProvider({ children }) {
   }, [applyAuth, syncTokenRefs]);
 
   const completeOnboarding = useCallback(
-    async (nickname, generationTag) => {
-      const nextUser = await completeOnboardingApi({ nickname, generationTag });
+    async (nextOnboardingState, nextGenerationTag) => {
+      const nickname = typeof nextOnboardingState === 'object'
+        ? nextOnboardingState.nickname
+        : nextOnboardingState;
+      const generationTag = typeof nextOnboardingState === 'object'
+        ? nextOnboardingState.generationTag
+        : nextGenerationTag;
       const storedAuth = (await readStoredAuth()) || {};
+      const onboardingPayload = {
+        nickname,
+        generationTag,
+      };
+
+      console.log('[온보딩] 요청 데이터:', onboardingPayload);
+      console.log('[온보딩] accessToken 있음:', !!accessTokenRef.current);
+      const nextUser = await completeOnboardingApi(onboardingPayload);
       const nextAuthState = {
         accessToken: accessTokenRef.current,
         refreshToken: refreshTokenRef.current,
@@ -311,7 +351,9 @@ export function AuthProvider({ children }) {
       loginWithApple,
       loginWithKakao,
       logout,
+      resetAuthState: clearAuthState,
       startGuestMode,
+      updateUser,
     }),
     [
       accessToken,
@@ -325,7 +367,9 @@ export function AuthProvider({ children }) {
       loginWithKakao,
       logout,
       refreshToken,
+      clearAuthState,
       startGuestMode,
+      updateUser,
       user,
     ],
   );
