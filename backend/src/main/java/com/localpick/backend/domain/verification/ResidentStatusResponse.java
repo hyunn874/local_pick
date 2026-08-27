@@ -2,9 +2,10 @@ package com.localpick.backend.domain.verification;
 
 import java.time.LocalDate;
 
-public record ResidentVerifyResponse(
-        int verifyCount,
+public record ResidentStatusResponse(
         boolean isVerified,
+        int verifyCount,
+        LocalDate lastVerifyDate,
         LocalDate nextVerifyDate,
         String badgeStatus
 ) {
