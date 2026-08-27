@@ -61,6 +61,9 @@ module.exports = {
   ...baseConfig,
   extra: {
     ...baseConfig.extra,
+    eas: {
+      projectId: 'd41ea5d8-3591-4f3e-bb2a-e4a5bfa3f136',
+    },
     naver: {
       ...baseConfig.extra?.naver,
       mapClientId: naverMapClientId,
