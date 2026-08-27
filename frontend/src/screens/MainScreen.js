@@ -122,7 +122,7 @@ export default function MainScreen() {
 
   const handleShowNotifications = () => {
     setHasNotification(false);
-    navigation.navigate('Notifications');
+    navigation.navigate('Notification');
   };
 
   const handleGoToChatRoom = () => {

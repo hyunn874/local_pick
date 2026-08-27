@@ -15,7 +15,10 @@
       "icon": "./assets/icon.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.localpick.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "거주자 인증을 위해 위치 정보가 필요해요."
+      }
     },
     "android": {
       "package": "com.localpick.app",
@@ -27,6 +30,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -36,8 +43,10 @@
     "extra": {
       "kakao": {
         "restApiKey": "",
-        "javascriptKey": "",
         "redirectUri": "localpick://auth/kakao"
+      },
+      "naver": {
+        "mapClientId": ""
       }
     },
     "plugins": [
@@ -45,7 +54,8 @@
       "expo-secure-store",
       "expo-asset",
       "expo-font",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "expo-build-properties"
     ]
   }
 }

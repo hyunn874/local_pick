@@ -141,6 +141,7 @@ export default function ChatRoomScreen() {
   const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
+  const isResidentVerified = Boolean(user?.isResidentVerified);
   const visiblePosts = normalizedSearchText
     ? posts.filter((post) =>
         `${post.title} ${post.content} ${post.categoryTag}`
@@ -257,6 +258,21 @@ export default function ChatRoomScreen() {
   };
 
   const handleSend = () => {
+    if (!isResidentVerified) {
+      Alert.alert(
+        '거주자 인증이 필요해요',
+        'GPS 위치 확인을 완료하면 소통방에 글을 작성할 수 있어요.',
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '인증하기',
+            onPress: () => navigation.navigate('ResidentVerification'),
+          },
+        ],
+      );
+      return;
+    }
+
     if (isMessageEmpty) {
       Alert.alert('내용을 입력해주세요', '명소 소개 글을 작성해주세요.');
       return;
@@ -449,9 +465,9 @@ export default function ChatRoomScreen() {
               placeholderTextColor="#9B9F98"
             />
             <TouchableOpacity
-              style={[styles.sendButton, isMessageEmpty && styles.disabledSendButton]}
+              style={[styles.sendButton, isMessageEmpty && isResidentVerified && styles.disabledSendButton]}
               activeOpacity={0.7}
-              disabled={isMessageEmpty}
+              disabled={isMessageEmpty && isResidentVerified}
               onPress={handleSend}
             >
               <Text style={styles.sendButtonText}>↑</Text>
