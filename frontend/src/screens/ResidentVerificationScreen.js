@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import { getReverseGeocoding } from '../api/kakaoApi';
-import { verifyResident } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 
 const BACKGROUND = '#F8F6F1';
@@ -37,7 +36,7 @@ function parseRegionText(regionText) {
 }
 
 export default function ResidentVerificationScreen({ navigation }) {
-  const { updateUser } = useAuth();
+  const { accessToken } = useAuth();
   const [step, setStep] = useState(1);
   const [regionInput, setRegionInput] = useState('');
   const [confirmedCount, setConfirmedCount] = useState(0);
@@ -72,7 +71,24 @@ export default function ResidentVerificationScreen({ navigation }) {
       const { latitude, longitude } = location.coords;
       const regionText = await getReverseGeocoding(latitude, longitude);
       const { sidoName, sigunguName } = parseRegionText(regionText);
-      const verification = await verifyResident({ sidoName, sigunguName });
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/auth/resident-verify`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ sidoName, sigunguName }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`거주자 인증 요청에 실패했어요. (${response.status})`);
+      }
+
+      const payload = await response.json();
+      const verification = payload?.data ?? payload;
 
       const nextCount = Math.min(
         verification?.requiredCount ?? 3,
@@ -87,17 +103,7 @@ export default function ResidentVerificationScreen({ navigation }) {
           [
             {
               text: '확인',
-              onPress: async () => {
-                await updateUser((currentUser) => ({
-                  ...(currentUser || {}),
-                  district: `${sidoName} ${sigunguName}`,
-                  isResidentVerified: true,
-                  region: currentUser?.region || {
-                    sidoName,
-                    sigunguName,
-                    fullName: `${sidoName} ${sigunguName}`,
-                  },
-                }));
+              onPress: () => {
                 navigation.goBack();
               },
             },
