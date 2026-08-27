@@ -25,6 +25,9 @@ public enum ErrorCode {
     ALREADY_ONBOARDED(HttpStatus.CONFLICT, "U003", "이미 설정을 완료한 계정입니다."),
     USER_WITHDRAWN(HttpStatus.FORBIDDEN, "U004", "탈퇴한 계정입니다."),
 
+    // 거주자 인증
+    VERIFY_NOT_IN_WINDOW(HttpStatus.BAD_REQUEST, "A007", "인증 가능한 기간이 아닙니다. 다음 인증 가능일을 확인해 주세요."),
+
     // 지역
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "지역을 찾을 수 없습니다."),
 
