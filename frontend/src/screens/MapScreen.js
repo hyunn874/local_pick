@@ -17,7 +17,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import KakaoMapView from '../components/KakaoMapView';
+import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
@@ -428,12 +428,12 @@ export default function MapScreen() {
 
         <View style={styles.mapArea}>
           {filteredMarkers.length > 0 ? (
-            <KakaoMapView
+            <NaverMapView
               latitude={YUSEONG_CENTER.latitude}
               longitude={YUSEONG_CENTER.longitude}
               markers={filteredMarkers}
               onMarkerPress={handleSelectMarker}
-              style={styles.kakaoMap}
+              style={styles.naverMap}
             />
           ) : (
             <View style={styles.noSearchResults}>
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  kakaoMap: {
+  naverMap: {
     flex: 1,
   },
   noSearchResults: {

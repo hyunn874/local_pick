@@ -18,6 +18,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import PassHistoryScreen from '../screens/PassHistoryScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import ResidentVerificationScreen from '../screens/ResidentVerificationScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import TermsScreen from '../screens/TermsScreen';
 
@@ -193,10 +194,12 @@ export default function RootTabNavigator() {
       <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <Stack.Screen name="Settings" component={SettingsRoute} />
       <Stack.Screen name="AdoptedPlaces" component={AdoptedPlacesScreen} />
+      <Stack.Screen name="Notification" component={NotificationScreen} />
       <Stack.Screen name="Notifications" component={NotificationScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="AllRecommend" component={AllRecommendScreen} />
       <Stack.Screen name="PassHistory" component={PassHistoryScreen} />
+      <Stack.Screen name="ResidentVerification" component={ResidentVerificationScreen} />
     </Stack.Navigator>
   );
 }

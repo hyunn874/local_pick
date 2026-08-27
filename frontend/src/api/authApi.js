@@ -12,6 +12,10 @@ export function completeOnboarding({ nickname, generationTag }) {
   return apiClient.post('/api/users/me/onboarding', { nickname, generationTag });
 }
 
+export function verifyResident({ sidoName, sigunguName }) {
+  return apiClient.post('/api/auth/resident-verify', { sidoName, sigunguName });
+}
+
 export async function checkNicknameAvailability(nickname) {
   const response = await apiClient.get('/api/users/nickname-check', {
     params: { nickname },
