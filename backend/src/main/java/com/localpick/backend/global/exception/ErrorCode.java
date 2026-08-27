@@ -23,6 +23,7 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U001", "사용자를 찾을 수 없습니다."),
     NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "U002", "이미 사용 중인 닉네임입니다."),
     ALREADY_ONBOARDED(HttpStatus.CONFLICT, "U003", "이미 설정을 완료한 계정입니다."),
+    USER_WITHDRAWN(HttpStatus.FORBIDDEN, "U004", "탈퇴한 계정입니다."),
 
     // 지역
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "지역을 찾을 수 없습니다."),

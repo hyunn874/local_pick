@@ -28,6 +28,13 @@ public class UserController {
         return ApiResponse.ok(userService.completeOnboarding(userId, request));
     }
 
+    /** DELETE /api/users/me — 회원탈퇴 */
+    @DeleteMapping("/me")
+    public ApiResponse<Void> withdraw(@CurrentUserId Long userId) {
+        userService.withdraw(userId);
+        return ApiResponse.ok(null);
+    }
+
     /** GET /api/users/nickname-check?nickname=유성구주민 — 중복 확인 */
     @GetMapping("/nickname-check")
     public ApiResponse<Map<String, Object>> checkNickname(@RequestParam String nickname) {
