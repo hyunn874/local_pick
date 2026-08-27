@@ -30,6 +30,7 @@ spring:
       ddl-auto: update
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         default_batch_fetch_size: 100
         temp:
           use_jdbc_metadata_defaults: false
