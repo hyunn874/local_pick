@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -8,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -21,39 +23,56 @@ import Animated, {
 
 import { useAuth } from '../contexts/AuthContext';
 import { earningMethods, localPassSummary, usageHistory } from '../mocks/localPassMockData';
+import { getMyPostProgress } from '../state/myPostProgress';
+import { getBalance, useBalance } from '../state/localPassStore';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
-const ORANGE = '#F28C28';
 const RED = '#D94848';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
+const PASS_PLACES = [
+  { id: 1, name: '봉명동 숨은 골목 카페', region: '대전 유성구', category: '카페' },
+  { id: 2, name: '갑천 노을 산책로', region: '대전 유성구', category: '산책' },
+  { id: 3, name: '유성 과학 산책길', region: '대전 유성구', category: '산책' },
+];
 
-function EarningMethodItem({ method }) {
+function EarningMethodItem({ method, isExpanded, onToggle }) {
+  const isCompleted = method.id === 'signup';
   const handlePress = () => {
+    if (isCompleted) {
+      return;
+    }
+
     void Haptics.selectionAsync();
-    Alert.alert(method.alertTitle, method.alertMessage);
+    onToggle(method.id);
   };
 
   return (
-    <TouchableOpacity
-      style={styles.methodItem}
-      activeOpacity={0.7}
-      onPress={handlePress}
-    >
-      <View style={styles.methodIcon}>
-        <Text style={styles.methodIconText}>{method.icon}</Text>
-      </View>
-      <View style={styles.methodTextGroup}>
-        <Text style={styles.methodTitle}>{method.title}</Text>
-        <Text style={styles.methodDescription}>{method.description}</Text>
-      </View>
-      <View style={styles.rewardBadge}>
-        <Text style={styles.rewardBadgeText}>{method.reward}</Text>
-      </View>
-    </TouchableOpacity>
+    <View style={styles.methodItemContainer}>
+      <TouchableOpacity
+        style={[styles.methodItem, isCompleted && styles.completedMethodItem]}
+        activeOpacity={0.7}
+        disabled={isCompleted}
+        onPress={handlePress}
+      >
+        <View style={styles.methodIcon}>
+          <Text style={styles.methodIconText}>{method.icon}</Text>
+        </View>
+        <View style={styles.methodTextGroup}>
+          <Text style={styles.methodTitle}>{method.title}</Text>
+          <Text style={styles.methodDescription}>{method.description}</Text>
+        </View>
+        <View style={styles.rewardBadge}>
+          <Text style={styles.rewardBadgeText}>{method.reward}</Text>
+        </View>
+      </TouchableOpacity>
+      {isExpanded && method.detail ? (
+        <Text style={styles.methodDetailText}>{method.detail}</Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -70,19 +89,55 @@ function UsageHistoryItem({ item }) {
 }
 
 export default function LocalPassScreen() {
+  const { isGuest } = useAuth();
+
+  if (isGuest) {
+    return <GuestLocalPassScreen />;
+  }
+
+  return <AuthenticatedLocalPassScreen />;
+}
+
+function GuestLocalPassScreen() {
+  const { exitGuestMode } = useAuth();
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.guestEmptyState}>
+        <Text style={styles.guestLockIcon}>🔒</Text>
+        <Text style={styles.guestEmptyTitle}>로그인이 필요한 서비스예요</Text>
+        <TouchableOpacity
+          style={styles.guestLoginButton}
+          activeOpacity={0.7}
+          onPress={exitGuestMode}
+        >
+          <Text style={styles.guestLoginButtonText}>로그인하기</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function AuthenticatedLocalPassScreen() {
   const { logout, user } = useAuth();
   const navigation = useNavigation();
   const passCountAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
+  const [localPassBalance, setLocalPassBalance] = useBalance(
+    user?.localPassBalance ?? getBalance(),
+  );
   const [displayPassCount, setDisplayPassCount] = useState(0);
+  const [ongoingPick, setOngoingPick] = useState(null);
+  const [isPlaceModalVisible, setIsPlaceModalVisible] = useState(false);
+  const [usageHistoryItems, setUsageHistoryItems] = useState(usageHistory);
+  const [expandedMethodId, setExpandedMethodId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const passCount = user?.localPassBalance ?? localPassSummary.count;
   const regionName = user?.region?.fullName || '거주 지역 미설정';
   const profileName = user?.nickname || '로컬픽 사용자';
   const profileInitial = profileName.slice(0, 1);
   const verificationLabel = user?.isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 인증 필요';
-  const hasPass = passCount > 0;
+  const hasPass = localPassBalance > 0;
 
   useAnimatedReaction(
     () => passCountAnimation.value,
@@ -92,15 +147,24 @@ export default function LocalPassScreen() {
   );
 
   useEffect(() => {
-    passCountAnimation.value = withTiming(passCount, { duration: 600 });
-    progressAnimation.value = withTiming(localPassSummary.ongoingProgress, { duration: 800 });
+    passCountAnimation.value = withTiming(localPassBalance, { duration: 600 });
+    progressAnimation.value = withTiming(
+      ongoingPick?.progress ?? localPassSummary.ongoingProgress,
+      { duration: 800 },
+    );
 
     return () => {
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current);
       }
     };
-  }, [passCount, passCountAnimation, progressAnimation]);
+  }, [localPassBalance, ongoingPick?.progress, passCountAnimation, progressAnimation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setOngoingPick(getMyPostProgress());
+    }, []),
+  );
 
   const progressAnimatedStyle = useAnimatedStyle(() => ({
     width: `${progressAnimation.value}%`,
@@ -119,16 +183,55 @@ export default function LocalPassScreen() {
   };
 
   const handleUsePass = () => {
-    if (!hasPass) {
+    if (localPassBalance <= 0) {
+      Alert.alert(
+        '로컬패스 부족',
+        '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
+      );
       return;
     }
 
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('패스 사용', '지도에서 타지역 명소를 열람할 수 있어요!');
+    setIsPlaceModalVisible(true);
   };
 
-  const handleShowRegion = () => {
-    Alert.alert('내 지역', `현재 거주 지역: ${regionName}`);
+  const handleSelectPassPlace = (place) => {
+    Alert.alert(
+      '장소 열람',
+      `${place.name}을 열람하기 위해 로컬패스 1개를 사용해요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '사용하기',
+          onPress: () => {
+            setLocalPassBalance(getBalance() - 1);
+            setIsPlaceModalVisible(false);
+            setUsageHistoryItems((currentItems) => [
+              {
+                id: `pass-${Date.now()}`,
+                place: `${place.region}·${place.name}`,
+                date: '방금 전',
+                amount: '-1개',
+              },
+              ...currentItems,
+            ]);
+            Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
+          },
+        },
+      ],
+    );
+  };
+
+  const handleOpenSettings = () => {
+    navigation.navigate('Settings');
+  };
+
+  const handleShowPassHistory = () => {
+    navigation.navigate('PassHistory');
+  };
+
+  const handleToggleEarningMethod = (methodId) => {
+    setExpandedMethodId((currentId) => (currentId === methodId ? null : methodId));
   };
 
   const handleLogout = () => {
@@ -165,11 +268,13 @@ export default function LocalPassScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>내 로컬패스</Text>
           <TouchableOpacity
-            style={styles.locationButton}
+            style={styles.settingsButton}
             activeOpacity={0.7}
-            onPress={handleShowRegion}
+            accessibilityRole="button"
+            accessibilityLabel="설정"
+            onPress={handleOpenSettings}
           >
-            <Text style={styles.locationIcon}>📍</Text>
+            <Ionicons name="settings-outline" size={24} color={MAIN_GREEN} />
           </TouchableOpacity>
         </View>
 
@@ -200,7 +305,6 @@ export default function LocalPassScreen() {
           <TouchableOpacity
             style={[styles.usePassButton, !hasPass && styles.disabledUsePassButton]}
             activeOpacity={0.7}
-            disabled={!hasPass}
             onPress={handleUsePass}
           >
             <Text style={styles.usePassButtonText}>로컬패스 사용하기</Text>
@@ -219,7 +323,12 @@ export default function LocalPassScreen() {
           <Text style={styles.sectionTitle}>로컬패스 획득 방법</Text>
           <View style={styles.methodList}>
             {earningMethods.map((method) => (
-              <EarningMethodItem key={method.id} method={method} />
+              <EarningMethodItem
+                key={method.id}
+                method={method}
+                isExpanded={expandedMethodId === method.id}
+                onToggle={handleToggleEarningMethod}
+              />
             ))}
           </View>
         </View>
@@ -227,24 +336,29 @@ export default function LocalPassScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>채택까지 현황</Text>
           <View style={styles.ongoingCard}>
-            <Text style={styles.ongoingLabel}>ONGOING PICK</Text>
-            <Text style={styles.ongoingTitle}>아는 사람만 가는 봉명동 골목 카페</Text>
+            <Text style={styles.ongoingLabel}>진행 중인 명소</Text>
+            <Text style={styles.ongoingTitle}>
+              {ongoingPick?.title || '아는 사람만 가는 봉명동 골목 카페'}
+            </Text>
             <View style={styles.progressHeader}>
-              <Text style={styles.progressText}>채택까지 좋아요 17개 남음</Text>
-              <Text style={styles.progressPercent}>{localPassSummary.ongoingProgress}%</Text>
+              <Text style={styles.progressText}>
+                채택까지 좋아요{' '}
+                {Math.max(
+                  0,
+                  (ongoingPick?.targetLikes ?? 30) - (ongoingPick?.likes ?? 13),
+                )}
+                개 남음
+              </Text>
+              <Text style={styles.progressPercent}>
+                {ongoingPick?.progress ?? localPassSummary.ongoingProgress}%
+              </Text>
             </View>
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, progressAnimatedStyle]} />
             </View>
-            <TouchableOpacity
-              style={styles.expectedRewardButton}
-              activeOpacity={0.7}
-              onPress={() =>
-                Alert.alert('채택 보상', '명소가 채택되면 로컬패스 5개가 자동 지급돼요!')
-              }
-            >
-              <Text style={styles.expectedRewardText}>채택 시 +5개 지급 예정</Text>
-            </TouchableOpacity>
+            <View style={styles.expectedRewardLabel}>
+              <Text style={styles.expectedRewardText}>채택되면 5개 지급</Text>
+            </View>
           </View>
         </View>
 
@@ -252,13 +366,13 @@ export default function LocalPassScreen() {
           <Text style={styles.sectionTitle}>사용 내역</Text>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => Alert.alert('사용 내역', '전체 내역 화면은 준비 중이에요!')}
+            onPress={handleShowPassHistory}
           >
             <Text style={styles.sectionLink}>전체보기 &gt;</Text>
           </TouchableOpacity>
         </View>
 
-        {usageHistory.length === 0 ? (
+        {usageHistoryItems.length === 0 ? (
           <View style={styles.emptyHistory}>
             <Text style={styles.emptyHistoryIcon}>📋</Text>
             <Text style={styles.emptyHistoryTitle}>아직 사용한 내역이 없어요</Text>
@@ -273,12 +387,49 @@ export default function LocalPassScreen() {
           </View>
         ) : (
           <View style={styles.historyList}>
-            {usageHistory.map((item) => (
+            {usageHistoryItems.map((item) => (
               <UsageHistoryItem key={item.id} item={item} />
             ))}
           </View>
         )}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isPlaceModalVisible}
+        onRequestClose={() => setIsPlaceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.placeModal}>
+            <Text style={styles.placeModalTitle}>어떤 장소를 열람할까요?</Text>
+            <View style={styles.placeList}>
+              {PASS_PLACES.map((place) => (
+                <TouchableOpacity
+                  key={place.id}
+                  style={styles.placeCard}
+                  activeOpacity={0.7}
+                  onPress={() => handleSelectPassPlace(place)}
+                >
+                  <View style={styles.placeCardTextGroup}>
+                    <Text style={styles.placeCardName}>{place.name}</Text>
+                    <Text style={styles.placeCardRegion}>{place.region}</Text>
+                  </View>
+                  <View style={styles.placeCategoryTag}>
+                    <Text style={styles.placeCategoryTagText}>{place.category}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              activeOpacity={0.7}
+              onPress={() => setIsPlaceModalVisible(false)}
+            >
+              <Text style={styles.modalCancelButtonText}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -304,16 +455,42 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '900',
   },
-  locationButton: {
+  guestEmptyState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  guestLockIcon: {
+    fontSize: 44,
+    marginBottom: 16,
+  },
+  guestEmptyTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 18,
+  },
+  guestLoginButton: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    height: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  guestLoginButtonText: {
+    color: CARD,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  settingsButton: {
     alignItems: 'center',
     backgroundColor: CARD,
     borderRadius: 22,
     height: 44,
     justifyContent: 'center',
     width: 44,
-  },
-  locationIcon: {
-    fontSize: 19,
   },
   profileCard: {
     backgroundColor: CARD,
@@ -429,13 +606,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 14,
   },
-  methodItem: {
-    alignItems: 'center',
+  methodItemContainer: {
     borderBottomColor: BORDER,
     borderBottomWidth: 1,
+    paddingVertical: 14,
+  },
+  methodItem: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 12,
-    paddingVertical: 14,
+  },
+  completedMethodItem: {
+    opacity: 0.5,
   },
   methodIcon: {
     alignItems: 'center',
@@ -463,6 +645,14 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 3,
   },
+  methodDetailText: {
+    color: '#7A9B8A',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginLeft: 54,
+    marginTop: 10,
+  },
   rewardBadge: {
     backgroundColor: '#E7EFE9',
     borderRadius: 999,
@@ -479,17 +669,25 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 12,
     padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
   },
   ongoingLabel: {
-    color: ORANGE,
+    color: TEXT_SECONDARY,
     fontSize: 12,
     fontWeight: '900',
   },
   ongoingTitle: {
     color: TEXT_PRIMARY,
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 25,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 21,
     marginTop: 8,
   },
   progressHeader: {
@@ -520,16 +718,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: '100%',
   },
-  expectedRewardButton: {
+  expectedRewardLabel: {
     alignItems: 'center',
-    backgroundColor: '#E7EFE9',
-    borderRadius: 8,
+    alignSelf: 'flex-end',
+    backgroundColor: '#EEF5F1',
+    borderRadius: 20,
     marginTop: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   expectedRewardText: {
     color: MAIN_GREEN,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
   },
   sectionHeader: {
@@ -607,6 +807,77 @@ const styles = StyleSheet.create({
   },
   mapButtonText: {
     color: CARD,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  placeModal: {
+    backgroundColor: CARD,
+    borderRadius: 8,
+    padding: 18,
+    width: '100%',
+  },
+  placeModalTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  placeList: {
+    gap: 10,
+    marginTop: 16,
+  },
+  placeCard: {
+    alignItems: 'center',
+    backgroundColor: BACKGROUND,
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  placeCardTextGroup: {
+    flex: 1,
+  },
+  placeCardName: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  placeCardRegion: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  placeCategoryTag: {
+    backgroundColor: '#E7EFE9',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  placeCategoryTagText: {
+    color: MAIN_GREEN,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  modalCancelButton: {
+    alignItems: 'center',
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 16,
+    paddingVertical: 13,
+  },
+  modalCancelButtonText: {
+    color: TEXT_SECONDARY,
     fontSize: 14,
     fontWeight: '900',
   },

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
-  Alert,
   Dimensions,
   RefreshControl,
   ScrollView,
@@ -33,8 +32,24 @@ const PLACEHOLDER_GRAY = '#E0E0E0';
 const FEATURE_CARD_HEIGHT = 224;
 const CANDIDATE_CARD_WIDTH = Dimensions.get('window').width * 0.75;
 
+function getResidenceName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '내 동네';
+}
+
+function getAdoptedPlaceRegionName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '서울 은평구';
+}
+
 export default function MainScreen() {
-  const { user } = useAuth();
+  const { exitGuestMode, isGuest, user } = useAuth();
   const navigation = useNavigation();
   const cardAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
@@ -42,7 +57,16 @@ export default function MainScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [hasNotification, setHasNotification] = useState(true);
   const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
-  const userRegionName = user?.region?.fullName || '대전광역시 유성구';
+  const userRegionName = getResidenceName(user);
+  const adoptedPlaceRegionName = getAdoptedPlaceRegionName(user);
+  const residenceAdoptedPlaces = useMemo(
+    () =>
+      adoptedPlaces.map((place) => ({
+        ...place,
+        region: adoptedPlaceRegionName,
+      })),
+    [adoptedPlaceRegionName],
+  );
   const regionCandidateItems = useMemo(() => {
     const candidates = regions
       .filter((region) => region.fullName !== userRegionName)
@@ -93,12 +117,12 @@ export default function MainScreen() {
   };
 
   const handleShowAllPlaces = () => {
-    Alert.alert('준비 중', '곧 오픈 예정이에요!');
+    navigation.navigate('AdoptedPlaces');
   };
 
   const handleShowNotifications = () => {
     setHasNotification(false);
-    Alert.alert('알림', '새로운 알림이 없어요');
+    navigation.navigate('Notifications');
   };
 
   const handleGoToChatRoom = () => {
@@ -117,6 +141,10 @@ export default function MainScreen() {
       setRefreshing(false);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, 1500);
+  };
+
+  const handleLoginPress = () => {
+    exitGuestMode();
   };
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
@@ -161,6 +189,21 @@ export default function MainScreen() {
             </View>
           </TouchableOpacity>
         </View>
+
+        {isGuest && (
+          <View style={styles.guestBanner}>
+            <Text style={styles.guestBannerText} numberOfLines={1}>
+              로그인하면 소통방과 로컬패스를 이용할 수 있어요
+            </Text>
+            <TouchableOpacity
+              style={styles.guestLoginButton}
+              activeOpacity={0.7}
+              onPress={handleLoginPress}
+            >
+              <Text style={styles.guestLoginButtonText}>로그인</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>이 주의 발굴 지역</Text>
@@ -230,13 +273,16 @@ export default function MainScreen() {
         </View>
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.blockTitle}>최근 채택된 명소</Text>
+          <View>
+            <Text style={styles.blockTitle}>최근 채택된 명소</Text>
+            <Text style={styles.sectionDescription}>{userRegionName}의 채택 명소</Text>
+          </View>
           <TouchableOpacity activeOpacity={0.7} onPress={handleShowAllPlaces}>
             <Text style={styles.sectionLink}>전체보기 &gt;</Text>
           </TouchableOpacity>
         </View>
 
-        {adoptedPlaces.length === 0 ? (
+        {residenceAdoptedPlaces.length === 0 ? (
           <View style={styles.emptyPlaces}>
             <Text style={styles.emptyPlacesText}>아직 채택된 명소가 없어요</Text>
             <TouchableOpacity
@@ -249,7 +295,7 @@ export default function MainScreen() {
           </View>
         ) : (
           <View style={styles.placeList}>
-            {adoptedPlaces.map((place) => (
+            {residenceAdoptedPlaces.map((place) => (
               <View key={place.id} style={styles.placeItem}>
                 <Image
                   source={{ uri: place.imageUrl }}
@@ -317,6 +363,37 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 44,
+  },
+  guestBanner: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 10,
+    height: 44,
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    paddingHorizontal: 12,
+  },
+  guestBannerText: {
+    color: CARD,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  guestLoginButton: {
+    alignItems: 'center',
+    borderColor: CARD,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  guestLoginButtonText: {
+    color: CARD,
+    fontSize: 13,
+    fontWeight: '900',
   },
   notificationIconWrap: {
     alignItems: 'center',
@@ -419,6 +496,12 @@ const styles = StyleSheet.create({
     color: '#17251D',
     fontSize: 18,
     fontWeight: '900',
+  },
+  sectionDescription: {
+    color: '#7A9B8A',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
   },
   candidateList: {
     gap: 12,

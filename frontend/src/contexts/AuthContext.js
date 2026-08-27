@@ -7,6 +7,7 @@ import {
   fetchMe,
   refreshTokens,
 } from '../api/authApi';
+import { signInWithApple } from '../api/appleApi';
 import { signInWithKakao } from '../api/kakaoAuthApi';
 
 const AUTH_STORAGE_KEY = 'localpick.auth';
@@ -58,6 +59,7 @@ export function AuthProvider({ children }) {
   const [accessToken, setAccessToken] = useState(null);
   const [refreshToken, setRefreshToken] = useState(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const accessTokenRef = useRef(null);
   const refreshTokenRef = useRef(null);
@@ -109,6 +111,7 @@ export function AuthProvider({ children }) {
     setAccessToken(normalizedAuthState.accessToken);
     setRefreshToken(normalizedAuthState.refreshToken);
     setIsOnboarded(normalizedAuthState.isOnboarded);
+    setIsGuest(false);
     syncTokenRefs(normalizedAuthState.accessToken, normalizedAuthState.refreshToken);
     await writeStoredAuth(normalizedAuthState);
 
@@ -120,9 +123,18 @@ export function AuthProvider({ children }) {
     setAccessToken(null);
     setRefreshToken(null);
     setIsOnboarded(false);
+    setIsGuest(false);
     syncTokenRefs(null, null);
     await clearStoredAuth();
   }, [syncTokenRefs]);
+
+  const startGuestMode = useCallback(() => {
+    setIsGuest(true);
+  }, []);
+
+  const exitGuestMode = useCallback(() => {
+    setIsGuest(false);
+  }, []);
 
   const devLogin = useCallback(() => {
     const nextAuthState = {
@@ -168,6 +180,51 @@ export function AuthProvider({ children }) {
       provider: 'kakao',
       user,
     });
+  }, [applyAuth, syncTokenRefs]);
+
+  const loginWithApple = useCallback(async () => {
+    try {
+      const credential = await signInWithApple();
+      const identityToken = credential.identityToken;
+
+      if (!identityToken) {
+        throw new Error('Apple identity token을 받지 못했어요.');
+      }
+
+      // 백엔드에 identityToken 을 보내 JWT 를 발급받는다.
+      const response = await apiClient.post('/api/auth/apple', { identityToken });
+      const authData = response?.data ?? response;
+
+      if (!authData?.accessToken || !authData?.refreshToken) {
+        throw new Error('서버에서 토큰을 받지 못했어요.');
+      }
+
+      // fetchMe 가 Authorization 헤더를 붙일 수 있도록 ref 를 먼저 채운다.
+      syncTokenRefs(authData.accessToken, authData.refreshToken);
+
+      let userData;
+      try {
+        userData = await fetchMe();
+      } catch (meError) {
+        syncTokenRefs(null, null);
+        throw meError;
+      }
+
+      return applyAuth({
+        accessToken: authData.accessToken,
+        refreshToken: authData.refreshToken,
+        isNewUser: authData.isNewUser,
+        isOnboarded: authData.isOnboarded,
+        provider: 'apple',
+        user: userData,
+      });
+    } catch (error) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+
+      throw error;
+    }
   }, [applyAuth, syncTokenRefs]);
 
   const completeOnboarding = useCallback(
@@ -244,23 +301,31 @@ export function AuthProvider({ children }) {
       accessToken,
       refreshToken,
       user,
+      isGuest,
       isInitializing,
       isLoggedIn: Boolean(user),
       isOnboarded,
       completeOnboarding,
       devLogin,
+      exitGuestMode,
+      loginWithApple,
       loginWithKakao,
       logout,
+      startGuestMode,
     }),
     [
       accessToken,
       completeOnboarding,
       devLogin,
+      exitGuestMode,
+      isGuest,
       isInitializing,
       isOnboarded,
+      loginWithApple,
       loginWithKakao,
       logout,
       refreshToken,
+      startGuestMode,
       user,
     ],
   );

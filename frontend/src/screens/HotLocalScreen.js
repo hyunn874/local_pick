@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { fetchDevVisitorHotLocals, fetchWeeklyHotLocals } from '../api/predictionApi';
+import { useAuth } from '../contexts/AuthContext';
 import { hotLocalData } from '../mocks/hotLocalMockData';
 
 const MAIN_GREEN = '#2D5C44';
@@ -56,23 +57,79 @@ function MetricRow({ metric, animatedProgressStyle }) {
   );
 }
 
-function SmallRankCard({ item, onPress }) {
+function getPercentFromText(value, fallback) {
+  const match = String(value).match(/\d+/);
+
+  return match ? Number(match[0]) : fallback;
+}
+
+function SmallRankCard({ item, isExpanded, onChatPress, onPress }) {
+  const expandAnimation = useSharedValue(0);
+  const visitorProgress = item.visitorProgress ?? getPercentFromText(item.visitor, 0);
+  const diversityProgress = item.diversityProgress ?? getPercentFromText(item.diversity, 0);
+
+  useEffect(() => {
+    expandAnimation.value = withTiming(isExpanded ? 1 : 0, { duration: 300 });
+  }, [expandAnimation, isExpanded]);
+
+  const detailAnimatedStyle = useAnimatedStyle(() => ({
+    maxHeight: expandAnimation.value * 170,
+    opacity: expandAnimation.value,
+  }));
+
   return (
-    <TouchableOpacity style={styles.smallRankCard} activeOpacity={0.7} onPress={onPress}>
-      <Text style={styles.smallRankBadge}>{item.rank}</Text>
-      <Text style={styles.smallRegion}>{item.region}</Text>
-      <Text style={styles.smallMetric}>{item.visitor}</Text>
-      <Text style={styles.smallMetric}>{item.diversity}</Text>
-    </TouchableOpacity>
+    <View style={styles.smallRankCard}>
+      <TouchableOpacity activeOpacity={0.7} onPress={onPress}>
+        <Text style={styles.smallRankBadge}>{item.rank}</Text>
+        <Text style={styles.smallRegion}>{item.region}</Text>
+        <Text style={styles.smallMetric}>{item.visitor}</Text>
+        <Text style={styles.smallMetric}>{item.diversity}</Text>
+      </TouchableOpacity>
+      <Animated.View style={[styles.smallRankDetail, detailAnimatedStyle]}>
+        <View style={styles.smallDetailMetric}>
+          <View style={styles.metricHeader}>
+            <Text style={styles.metricLabel}>방문자 증가율</Text>
+            <Text style={[styles.metricValue, { color: MAIN_GREEN }]}>{visitorProgress}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { backgroundColor: MAIN_GREEN, width: `${visitorProgress}%` },
+              ]}
+            />
+          </View>
+        </View>
+        <View style={styles.smallDetailMetric}>
+          <View style={styles.metricHeader}>
+            <Text style={styles.metricLabel}>다양성 지수</Text>
+            <Text style={[styles.metricValue, { color: RED }]}>{diversityProgress}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { backgroundColor: RED, width: `${diversityProgress}%` },
+              ]}
+            />
+          </View>
+        </View>
+        <TouchableOpacity style={styles.smallChatButton} activeOpacity={0.7} onPress={onChatPress}>
+          <Text style={styles.smallChatButtonText}>이 지역 소통방 보러가기 →</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
   );
 }
 
 export default function HotLocalScreen() {
   const navigation = useNavigation();
+  const { exitGuestMode, isGuest } = useAuth();
   const fadeAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
   const [weeklyHotLocalData, setWeeklyHotLocalData] = useState(hotLocalData);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedRank, setExpandedRank] = useState(null);
   const nextUpdateDays = getDaysUntilNextMonday();
   const rankOne = weeklyHotLocalData.rankOne;
   const visitorProgress = rankOne?.metrics.find((metric) => metric.id === 'visitor')?.progress ?? 0;
@@ -138,7 +195,27 @@ export default function HotLocalScreen() {
   }, [fadeAnimation, progressAnimation]);
 
   const handleSmallRankPress = (item) => {
-    Alert.alert(item.region, `${item.visitor} · ${item.diversity}`);
+    setExpandedRank((currentRank) => (currentRank === item.rank ? null : item.rank));
+  };
+
+  const handleChatPress = () => {
+    if (isGuest) {
+      Alert.alert(
+        '로그인이 필요해요',
+        '소통방은 로그인 후 이용할 수 있어요.',
+        [
+          { text: '취소', style: 'cancel' },
+          {
+            text: '로그인하기',
+            style: 'default',
+            onPress: exitGuestMode,
+          },
+        ],
+      );
+      return;
+    }
+
+    navigation.navigate('ChatRoom');
   };
 
   const cardAnimatedStyle = useAnimatedStyle(() => ({
@@ -222,7 +299,7 @@ export default function HotLocalScreen() {
             <TouchableOpacity
               style={styles.chatButton}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('ChatRoom')}
+              onPress={handleChatPress}
             >
               <Text style={styles.chatButtonText}>이 지역 소통방 바로가기 →</Text>
             </TouchableOpacity>
@@ -234,6 +311,8 @@ export default function HotLocalScreen() {
             <SmallRankCard
               key={item.rank}
               item={item}
+              isExpanded={expandedRank === item.rank}
+              onChatPress={handleChatPress}
               onPress={() => handleSmallRankPress(item)}
             />
           ))}
@@ -400,7 +479,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   smallRanksRow: {
-    flexDirection: 'row',
     gap: 12,
     marginTop: 16,
   },
@@ -411,6 +489,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flex: 1,
     padding: 14,
+  },
+  smallRankDetail: {
+    overflow: 'hidden',
+  },
+  smallDetailMetric: {
+    marginTop: 14,
+  },
+  smallChatButton: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    marginTop: 14,
+    paddingVertical: 12,
+  },
+  smallChatButtonText: {
+    color: CARD,
+    fontSize: 13,
+    fontWeight: '900',
   },
   smallRankBadge: {
     color: ORANGE,
