@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { API_BASE_URL } from '../api/apiClient';
+
 let balance = 3;
 let hasInitialized = false;
 const listeners = [];
@@ -31,4 +33,25 @@ export const useBalance = (initialBalance) => {
   }, []);
 
   return [b, setBalance];
+};
+
+export const syncBalanceFromServer = async (token) => {
+  if (!token) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/local-pass/balance`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await response.json();
+
+    if (data.success) {
+      setBalance(data.data.balance);
+    }
+  } catch (error) {
+    console.error('로컬패스 잔액 동기화 실패:', error);
+  }
 };
