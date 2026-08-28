@@ -1,0 +1,42 @@
+.vscode/
+backend/bin/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Expo, dependencies, and build output
+.expo/
+**/.expo/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+
+# Package manager and runtime logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Signing credentials and certificates
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+*.key
+*.crt
+*.mobileprovision
+
+# OS metadata
+.DS_Store
+**/.DS_Store

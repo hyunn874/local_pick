@@ -26,7 +26,7 @@ import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { earningMethods, localPassSummary, usageHistory } from '../mocks/localPassMockData';
 import { getMyPostProgress } from '../state/myPostProgress';
-import { getBalance, useBalance } from '../state/localPassStore';
+import { getBalance, syncBalanceFromServer, useBalance } from '../state/localPassStore';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -158,7 +158,7 @@ function AuthenticatedLocalPassScreen() {
   const regionName = user?.region?.fullName || '거주 지역 미설정';
   const profileName = user?.nickname || '로컬픽 사용자';
   const profileInitial = profileName.slice(0, 1);
-  const isResidentVerified = Boolean(user?.isResidentVerified);
+  const isResidentVerified = Boolean(user?.isResidentVerified || user?.badgeStatus === 'active');
   const verificationLabel = isResidentVerified ? '거주자 인증 완료 ✓' : '거주자 미인증';
   const hasPass = localPassBalance > 0;
 
@@ -213,9 +213,19 @@ function AuthenticatedLocalPassScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (accessToken) {
+        void syncBalanceFromServer(accessToken);
+      }
+
       setOngoingPick(getMyPostProgress());
       void loadLocalPassData({ showLoading: usageHistoryItems.length === 0 });
-    }, [loadLocalPassData, usageHistoryItems.length]),
+    }, [
+      accessToken,
+      loadLocalPassData,
+      usageHistoryItems.length,
+      user?.badgeStatus,
+      user?.isResidentVerified,
+    ]),
   );
 
   const progressAnimatedStyle = useAnimatedStyle(() => ({

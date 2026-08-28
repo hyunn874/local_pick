@@ -64,10 +64,10 @@
 - `MapScreen`은 `RegionSelector`에서 선택한 지역을 `selectedRegion` state로 보관한다.
 - 선택 지역의 중심 좌표는 우선 `region.centerLatitude`, `region.centerLongitude`를 사용한다.
 - API 지역 좌표가 없으면 시도명 기준 `regionCoordinates` 매핑을 사용한다.
-- `NaverMapView`는 중심 좌표가 바뀌면 내부 Native map key가 바뀌어 `initialCamera`가 새 좌표로 다시 적용된다.
+- `NaverMapView`는 중심 좌표나 marker signature가 바뀌면 내부 Native map key가 바뀌어 `initialCamera`와 마커 목록이 새 값으로 다시 적용된다.
 - 하단 섹션 제목은 선택 지역이 있으면 `${selectedRegion.fullName}의 명소`로 표시한다.
 - 하단 추천 목록은 선택 지역 `regionCode`로 `GET /api/places/adopted?regionCode=...`를 호출한다.
-- 채택 명소 API 실패 시 기존 `recommendedPlaces` mock을 선택 지역명으로 보정해 표시한다.
+- 채택 명소 API 실패 시 지도 마커와 하단 추천 목록은 빈 상태가 되며 mock 마커를 표시하지 않는다.
 - `RegionSelector`의 보조 텍스트는 지역 미선택 상태에서는 실제 `useRegions()` count 기반 `${count}개 지역`을 표시하고, 선택 후에는 `${selectedRegion.fullName}의 명소`를 표시한다.
 
 ## 화면 간 이동

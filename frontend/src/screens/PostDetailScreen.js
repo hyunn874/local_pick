@@ -75,10 +75,10 @@ function createInitialComments(commentCount) {
 
 function writeOngoingPick(post, likes, progress) {
   setMyPostProgress({
-    title: post.title,
+    title: post?.title,
     progress,
     likes,
-    targetLikes: post.targetLikes ?? TARGET_LIKES,
+    targetLikes: post?.targetLikes ?? TARGET_LIKES,
   });
 }
 
@@ -154,12 +154,12 @@ export default function PostDetailScreen({ navigation, route }) {
     }
 
     try {
-      const data = await apiClient.get(`/api/posts/${post.id}/comments`);
+      const data = await apiClient.get(`/api/posts/${post?.id}/comments`);
       const nextComments = normalizeCommentsResponse(data);
 
-      if (nextComments.length > 0 || post.comments === 0) {
+      if (nextComments.length > 0 || post?.comments === 0) {
         setComments(nextComments);
-        setPostCommentCount(post.id, nextComments.length);
+        setPostCommentCount(post?.id, nextComments.length);
       }
     } catch (error) {
       console.warn('Comments API fallback to local comments.', error?.message);
@@ -283,8 +283,8 @@ export default function PostDetailScreen({ navigation, route }) {
       }
 
       const shareContent = {
-        title: `로컬픽 - ${post.title}`,
-        message: `로컬픽에서 발견한 숨은 명소!\n\n📍 ${post.title}\n${post.content}\n\n로컬픽에서 더 많은 명소를 발견해보세요!`,
+        title: `로컬픽 - ${post?.title}`,
+        message: `로컬픽에서 발견한 숨은 명소!\n\n📍 ${post?.title}\n${post?.content}\n\n로컬픽에서 더 많은 명소를 발견해보세요!`,
       };
       const result = await Share.share(shareContent);
 
@@ -295,6 +295,32 @@ export default function PostDetailScreen({ navigation, route }) {
       Alert.alert('공유 실패', '공유하기를 다시 시도해주세요.');
     }
   };
+
+  if (!post) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#F8F6F1' }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#7A9B8A', fontSize: 15 }}>
+            게시글을 찾을 수 없어요.
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginTop: 16 }}
+          >
+            <Text style={{ color: '#2D5C44', fontSize: 15 }}>
+              돌아가기
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -322,16 +348,16 @@ export default function PostDetailScreen({ navigation, route }) {
               <View style={styles.card}>
                 <View style={styles.authorRow}>
                   <View style={styles.profileIcon}>
-                    <Text style={styles.profileInitial}>{post.author?.slice(0, 1) || '나'}</Text>
+                    <Text style={styles.profileInitial}>{post?.author?.slice(0, 1) || '나'}</Text>
                   </View>
                   <View style={styles.authorInfo}>
                     <View style={styles.authorNameRow}>
-                      <Text style={styles.authorName}>{post.author || '나'}</Text>
+                      <Text style={styles.authorName}>{post?.author || '나'}</Text>
                       <View style={styles.residentBadge}>
                         <Text style={styles.residentBadgeText}>거주자</Text>
                       </View>
                     </View>
-                    <Text style={styles.postTime}>{post.time || '방금 전'}</Text>
+                    <Text style={styles.postTime}>{post?.time || '방금 전'}</Text>
                   </View>
                 </View>
 
@@ -358,14 +384,14 @@ export default function PostDetailScreen({ navigation, route }) {
                   </View>
                 )}
 
-                <Text style={styles.postTitle}>{post.title}</Text>
-                {post.location && (
+                <Text style={styles.postTitle}>{post?.title}</Text>
+                {post?.location && (
                   <View style={styles.locationRow}>
                     <Ionicons name="location-outline" size={15} color="#7A9B8A" />
-                    <Text style={styles.locationText}>{post.location}</Text>
+                    <Text style={styles.locationText}>{post?.location}</Text>
                   </View>
                 )}
-                <Text style={styles.postContent}>{post.content}</Text>
+                <Text style={styles.postContent}>{post?.content}</Text>
 
                 <View style={styles.divider} />
 

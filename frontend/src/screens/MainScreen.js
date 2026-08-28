@@ -49,7 +49,7 @@ function getAdoptedPlaceRegionName(user) {
 }
 
 export default function MainScreen() {
-  const { exitGuestMode, isGuest, user } = useAuth();
+  const { exitGuestMode, isGuest, isLoggedIn, user } = useAuth();
   const navigation = useNavigation();
   const cardAnimation = useSharedValue(0);
   const refreshTimeoutRef = useRef(null);
@@ -59,6 +59,10 @@ export default function MainScreen() {
   const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
   const userRegionName = getResidenceName(user);
   const adoptedPlaceRegionName = getAdoptedPlaceRegionName(user);
+  const shouldShowResidentVerificationBanner =
+    isLoggedIn
+    && !isGuest
+    && (!user?.isResidentVerified || user?.badgeStatus !== 'active');
   const residenceAdoptedPlaces = useMemo(
     () =>
       adoptedPlaces.map((place) => ({
@@ -147,6 +151,10 @@ export default function MainScreen() {
     exitGuestMode();
   };
 
+  const handleResidentVerificationPress = () => {
+    navigation.navigate('ResidentVerification');
+  };
+
   const cardAnimatedStyle = useAnimatedStyle(() => ({
     opacity: cardAnimation.value,
     transform: [
@@ -201,6 +209,21 @@ export default function MainScreen() {
               onPress={handleLoginPress}
             >
               <Text style={styles.guestLoginButtonText}>로그인</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {shouldShowResidentVerificationBanner && (
+          <View style={styles.guestBanner}>
+            <Text style={styles.guestBannerText} numberOfLines={1}>
+              거주자 인증을 완료하면 소통방에 글을 올릴 수 있어요
+            </Text>
+            <TouchableOpacity
+              style={styles.guestLoginButton}
+              activeOpacity={0.7}
+              onPress={handleResidentVerificationPress}
+            >
+              <Text style={styles.guestLoginButtonText}>인증하기</Text>
             </TouchableOpacity>
           </View>
         )}

@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -86,7 +87,7 @@ function parseRegionText(regionText) {
 }
 
 export default function ResidentVerificationScreen({ navigation }) {
-  const { user, accessToken, updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const [step, setStep] = useState(1);
   const [regionInput, setRegionInput] = useState(() => {
     if (typeof user?.region === 'string') {
@@ -105,8 +106,17 @@ export default function ResidentVerificationScreen({ navigation }) {
   });
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualSidoName, setManualSidoName] = useState('');
+  const [manualSigunguName, setManualSigunguName] = useState('');
   const trimmedRegion = regionInput.trim();
+  const trimmedManualSidoName = manualSidoName.trim();
+  const trimmedManualSigunguName = manualSigunguName.trim();
   const canContinue = trimmedRegion.length > 0;
+  const canSubmitManual =
+    trimmedManualSidoName.length > 0
+    && trimmedManualSigunguName.length > 0
+    && !isCheckingLocation;
   const nextVerifyDate = residentStatus.nextVerifyDate;
   const isBadgeActive = residentStatus.badgeStatus === 'active' || residentStatus.isVerified;
   const statusVerifyCount = residentStatus.verifyCount ?? confirmedCount;
@@ -145,7 +155,90 @@ export default function ResidentVerificationScreen({ navigation }) {
       return;
     }
 
+    try {
+      const { sidoName, sigunguName } = parseRegionText(trimmedRegion);
+
+      setManualSidoName(sidoName);
+      setManualSigunguName(sigunguName);
+    } catch {
+      setManualSidoName('');
+      setManualSigunguName('');
+    }
+
     setStep(2);
+  };
+
+  const handleVerificationResult = useCallback(async (verification) => {
+    const nextCount = Math.min(
+      verification?.requiredCount ?? 3,
+      verification?.verifyCount ?? confirmedCount + 1,
+    );
+
+    setConfirmedCount(nextCount);
+    setResidentStatus((currentStatus) => ({
+      ...currentStatus,
+      ...verification,
+      verifyCount: nextCount,
+      badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
+    }));
+    await updateUser({
+      isResidentVerified: Boolean(verification?.isVerified),
+      badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : 'inactive'),
+      nextVerifyDate: verification?.nextVerifyDate,
+      verifyCount: nextCount,
+    });
+
+    if (verification?.isVerified) {
+      Alert.alert(
+        '인증 완료! 🎉',
+        `거주자 배지가 ${verification?.badgeStatus === 'active' ? '활성화' : '곧 활성화'}됩니다.\n다음 인증일: ${verification?.nextVerifyDate || '추후 안내'}`,
+        [
+          {
+            text: '확인',
+            onPress: () => {
+              navigation.goBack();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    void loadResidentStatus();
+  }, [confirmedCount, loadResidentStatus, navigation, updateUser]);
+
+  const submitResidentVerification = useCallback(async ({ sidoName, sigunguName }) => {
+    const verification = await verifyResident({ sidoName, sigunguName });
+
+    await handleVerificationResult(verification);
+  }, [handleVerificationResult]);
+
+  const handleManualVerify = async () => {
+    if (!canSubmitManual) {
+      Alert.alert('입력 확인', '시·도와 시·군·구를 모두 입력해주세요.');
+      return;
+    }
+
+    setIsCheckingLocation(true);
+
+    try {
+      await submitResidentVerification({
+        sidoName: trimmedManualSidoName,
+        sigunguName: trimmedManualSigunguName,
+      });
+    } catch (error) {
+      if (error?.code === 'A007') {
+        Alert.alert(
+          '인증 불가',
+          `아직 인증 기간이 아니에요.\n다음 인증 가능일: ${error?.data?.nextVerifyDate || nextVerifyDate || '확인 필요'}`,
+        );
+        return;
+      }
+
+      Alert.alert('위치 확인 실패', error?.message || '잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsCheckingLocation(false);
+    }
   };
 
   const handleVerifyLocation = async () => {
@@ -156,70 +249,54 @@ export default function ResidentVerificationScreen({ navigation }) {
     setIsCheckingLocation(true);
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
 
-      if (!permission.granted) {
-        Alert.alert('위치 권한이 필요해요', '거주자 인증을 위해 위치 접근을 허용해주세요.');
+      if (status !== 'granted') {
+        Alert.alert(
+          '위치 권한 필요',
+          '거주자 인증을 위해 위치 권한이 필요해요.\n설정에서 위치 권한을 허용해주세요.',
+          [
+            { text: '취소', style: 'cancel' },
+            {
+              text: '설정 열기',
+              onPress: () => Linking.openSettings(),
+            },
+          ],
+        );
         return;
       }
 
       const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
-      const regionText = await getReverseGeocoding(latitude, longitude);
-      const { sidoName, sigunguName } = parseRegionText(regionText);
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/auth/resident-verify`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ sidoName, sigunguName }),
-        },
-      );
+      let regionText;
 
-      if (!response.ok) {
-        throw new Error(`거주자 인증 요청에 실패했어요. (${response.status})`);
-      }
+      try {
+        regionText = await getReverseGeocoding(latitude, longitude);
+      } catch {
+        if (__DEV__) {
+          setShowManualInput(true);
+          return;
+        }
 
-      const payload = await response.json();
-      const verification = payload?.data ?? payload;
-
-      const nextCount = Math.min(
-        verification?.requiredCount ?? 3,
-        verification?.verifyCount ?? confirmedCount + 1,
-      );
-      setConfirmedCount(nextCount);
-      setResidentStatus((currentStatus) => ({
-        ...currentStatus,
-        ...verification,
-        verifyCount: nextCount,
-        badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
-      }));
-      await updateUser({
-        isResidentVerified: Boolean(verification?.isVerified),
-        badgeStatus: verification?.badgeStatus,
-        nextVerifyDate: verification?.nextVerifyDate,
-        verifyCount: nextCount,
-      });
-
-      if (verification?.isVerified) {
         Alert.alert(
-          '인증 완료! 🎉',
-          `거주자 배지가 ${verification?.badgeStatus === 'active' ? '활성화' : '곧 활성화'}됩니다.\n다음 인증일: ${verification?.nextVerifyDate || '추후 안내'}`,
+          '위치 확인 실패',
+          '현재 위치의 행정구역을 확인할 수 없어요.\n'
+          + 'Wi-Fi를 켜거나 실제 기기에서 시도해보세요.\n'
+          + '또는 거주 지역을 직접 입력할 수 있어요.',
           [
+            { text: '닫기', style: 'cancel' },
             {
-              text: '확인',
-              onPress: () => {
-                navigation.goBack();
-              },
+              text: '직접 입력하기',
+              onPress: () => setShowManualInput(true),
             },
           ],
         );
-      } else {
-        void loadResidentStatus();
+        return;
       }
+
+      const { sidoName, sigunguName } = parseRegionText(regionText);
+
+      await submitResidentVerification({ sidoName, sigunguName });
     } catch (error) {
       if (error?.code === 'A007') {
         Alert.alert(
@@ -348,6 +425,45 @@ export default function ResidentVerificationScreen({ navigation }) {
                   <Text style={styles.primaryButtonText}>{verifyButtonText}</Text>
                 )}
               </TouchableOpacity>
+              {showManualInput && (
+                <View style={styles.manualInputBox}>
+                  <Text style={styles.manualInputTitle}>직접 입력하기</Text>
+                  <Text style={styles.manualInputDescription}>
+                    GPS로 행정구역 확인이 어려우면 거주 지역을 직접 입력해주세요.
+                  </Text>
+                  <TextInput
+                    style={styles.manualInput}
+                    value={manualSidoName}
+                    onChangeText={setManualSidoName}
+                    placeholder="시·도 예: 대전광역시"
+                    placeholderTextColor="#9B9F98"
+                    returnKeyType="next"
+                  />
+                  <TextInput
+                    style={styles.manualInput}
+                    value={manualSigunguName}
+                    onChangeText={setManualSigunguName}
+                    placeholder="시·군·구 예: 유성구"
+                    placeholderTextColor="#9B9F98"
+                    returnKeyType="done"
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.primaryButton,
+                      !canSubmitManual && styles.disabledButton,
+                    ]}
+                    activeOpacity={0.7}
+                    disabled={!canSubmitManual}
+                    onPress={handleManualVerify}
+                  >
+                    {isCheckingLocation ? (
+                      <ActivityIndicator color={CARD} />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>이 위치로 인증하기</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
@@ -540,6 +656,36 @@ const styles = StyleSheet.create({
     color: CARD,
     fontSize: 16,
     fontWeight: '900',
+  },
+  manualInputBox: {
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 18,
+    padding: 14,
+  },
+  manualInputTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  manualInputDescription: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+    marginTop: 6,
+  },
+  manualInput: {
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
   progressBox: {
     backgroundColor: '#E7EFE9',
