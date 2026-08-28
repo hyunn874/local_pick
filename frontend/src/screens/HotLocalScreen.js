@@ -154,7 +154,6 @@ export default function HotLocalScreen() {
           return;
         }
 
-        console.warn('Hot local API fallback to mock data.', error?.message);
         setWeeklyHotLocalData(hotLocalData);
         setIsMockData(true);
       } finally {
