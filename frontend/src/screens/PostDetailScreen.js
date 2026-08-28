@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -100,6 +101,28 @@ function normalizeCommentsResponse(payload) {
   return Array.isArray(source) ? source.map(normalizeComment) : [];
 }
 
+function normalizePost(post, fallback = {}) {
+  const source = { ...fallback, ...(post || {}) };
+  const likes = Number(source.likes ?? source.likeCount ?? 0);
+
+  return {
+    ...source,
+    id: source.id ?? source.postId,
+    author: source.author?.nickname || source.authorNickname || source.authorName || source.author || '로컬픽 사용자',
+    authorId: source.authorId,
+    time: source.time || source.createdAt || '방금 전',
+    image: source.image || source.imageUrl || source.imageUrls?.[0],
+    imageUrl: source.imageUrl || source.image || source.imageUrls?.[0],
+    ageTag: source.ageTag || source.generationTag || '전체',
+    generationTag: source.generationTag || source.ageTag || '전체',
+    categoryTag: source.categoryTag || source.category || '기타',
+    likes,
+    comments: Number(source.comments ?? source.commentCount ?? 0),
+    adoptionCount: Number(source.adoptionCount ?? 0),
+    isAdopted: Boolean(source.isAdopted ?? source.adopted),
+  };
+}
+
 function CommentCard({ comment, onToggleLike }) {
   return (
     <View style={styles.commentCard}>
@@ -135,7 +158,9 @@ function CommentCard({ comment, onToggleLike }) {
 
 export default function PostDetailScreen({ navigation, route }) {
   const { user } = useAuth();
-  const post = route.params?.post;
+  const initialPost = route?.params?.post;
+  const [post, setPost] = useState(() => normalizePost(initialPost));
+  const [isLoadingPost, setIsLoadingPost] = useState(Boolean(initialPost?.id));
   const [commentText, setCommentText] = useState('');
   const [isLiked, setIsLiked] = useState(Boolean(post?.likedByMe ?? post?.isLiked));
   const [likeCount, setLikeCount] = useState(post?.likes ?? 0);
@@ -147,6 +172,31 @@ export default function PostDetailScreen({ navigation, route }) {
   const generationTag = post?.generationTag || post?.ageTag || '전체';
   const categoryTag = post?.categoryTag || '기타';
   const isCommentEmpty = !commentText.trim();
+  const isOwner = Boolean(
+    post?.isMine ||
+      (user?.id != null && post?.authorId != null && String(user.id) === String(post.authorId)),
+  );
+
+  const loadPost = useCallback(async () => {
+    if (!initialPost?.id) {
+      return;
+    }
+
+    setIsLoadingPost(true);
+
+    try {
+      const data = await apiClient.get(`/api/posts/${initialPost.id}`);
+      setPost((currentPost) => normalizePost(data, currentPost));
+    } catch (error) {
+      console.warn('Post detail API fallback to route data.', error?.message);
+    } finally {
+      setIsLoadingPost(false);
+    }
+  }, [initialPost?.id]);
+
+  useEffect(() => {
+    void loadPost();
+  }, [loadPost]);
 
   const loadComments = useCallback(async () => {
     if (!post?.id) {
@@ -193,8 +243,8 @@ export default function PostDetailScreen({ navigation, route }) {
 
     try {
       const likeData = await apiClient.post(`/api/posts/${post?.id}/like`);
-      const nextLikes = Number(likeData?.likes ?? likeData?.likeCount ?? likeCount);
-      const nextIsLiked = Boolean(likeData?.isLiked ?? likeData?.likedByMe ?? isLiked);
+      const nextLikes = Number(likeData?.likeCount ?? likeData?.likes ?? likeCount);
+      const nextIsLiked = Boolean(likeData?.liked ?? likeData?.isLiked ?? likeData?.likedByMe ?? isLiked);
       const nextProgress = Math.min(
         100,
         Math.round((nextLikes / (post?.targetLikes ?? TARGET_LIKES)) * 100),
@@ -207,6 +257,29 @@ export default function PostDetailScreen({ navigation, route }) {
     } catch (error) {
       console.warn('Post detail like API failed. Keeping local optimistic state.', error?.message);
     }
+  };
+
+  const handleDelete = () => {
+    if (!post?.id || !isOwner) {
+      return;
+    }
+
+    Alert.alert('게시글 삭제', '이 게시글을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await apiClient.delete(`/api/posts/${post.id}`);
+            navigation.goBack();
+          } catch (error) {
+            console.warn('Delete post API failed.', error?.message);
+            Alert.alert('삭제 실패', '게시글을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.');
+          }
+        },
+      },
+    ]);
   };
 
   const handleSendComment = async () => {
@@ -339,10 +412,24 @@ export default function PostDetailScreen({ navigation, route }) {
             <Ionicons name="chevron-back" size={24} color={MAIN_GREEN} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>게시글</Text>
-          <View style={styles.headerSpacer} />
+          {isOwner ? (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              activeOpacity={0.7}
+              onPress={handleDelete}
+            >
+              <Text style={styles.deleteButtonText}>삭제</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
         </View>
 
-        {post ? (
+        {isLoadingPost ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator color={MAIN_GREEN} />
+          </View>
+        ) : post ? (
           <>
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
               <View style={styles.card}>
@@ -498,6 +585,22 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 44,
+  },
+  deleteButton: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  deleteButtonText: {
+    color: '#D94848',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  loadingState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
   content: {
     padding: 20,

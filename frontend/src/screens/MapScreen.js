@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -18,12 +18,14 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import apiClient from '../api/apiClient';
+import { fetchRegionByCode } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
 import { generationFilters } from '../mocks/mapMockData';
 import { getBalance, setBalance, useBalance } from '../state/localPassStore';
+import REGION_COORDINATES from '../data/regionCoordinates';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -38,7 +40,7 @@ const YUSEONG_CENTER = {
   longitude: 127.3845,
 };
 
-const regionCoordinates = {
+const SIDO_COORDINATES = {
   '서울특별시': { lat: 37.5665, lng: 126.9780 },
   '부산광역시': { lat: 35.1796, lng: 129.0756 },
   '대구광역시': { lat: 35.8714, lng: 128.6014 },
@@ -46,6 +48,7 @@ const regionCoordinates = {
   '광주광역시': { lat: 35.1595, lng: 126.8526 },
   '대전광역시': { lat: 36.3504, lng: 127.3845 },
   '울산광역시': { lat: 35.5384, lng: 129.3114 },
+  '세종특별자치시': { lat: 36.4801, lng: 127.2890 },
   '경기도': { lat: 37.4138, lng: 127.5183 },
   '강원특별자치도': { lat: 37.8228, lng: 128.1555 },
   '충청북도': { lat: 36.6357, lng: 127.4912 },
@@ -57,15 +60,41 @@ const regionCoordinates = {
   '제주특별자치도': { lat: 33.4996, lng: 126.5312 },
 };
 
+const SIGUNGU_COORDINATES = {
+  종로구: { lat: 37.5735, lng: 126.9788 },
+  용산구: { lat: 37.5326, lng: 126.9906 },
+  성동구: { lat: 37.5633, lng: 127.0365 },
+  동대문구: { lat: 37.5744, lng: 127.0396 },
+  중랑구: { lat: 37.6063, lng: 127.0927 },
+};
+
 function resolveRegionCenter(region) {
-  if (Number.isFinite(region?.centerLatitude) && Number.isFinite(region?.centerLongitude)) {
+  const centerLatitude = Number(region?.centerLatitude);
+  const centerLongitude = Number(region?.centerLongitude);
+
+  if (Number.isFinite(centerLatitude) && Number.isFinite(centerLongitude)) {
     return {
-      latitude: region.centerLatitude,
-      longitude: region.centerLongitude,
+      latitude: centerLatitude,
+      longitude: centerLongitude,
     };
   }
 
-  const fallbackCenter = regionCoordinates[region?.sidoName];
+  const regionCenter = REGION_COORDINATES[region?.regionCode];
+
+  if (regionCenter) {
+    return regionCenter;
+  }
+
+  const sigunguCenter = SIGUNGU_COORDINATES[region?.sigunguName];
+
+  if (sigunguCenter) {
+    return {
+      latitude: sigunguCenter.lat,
+      longitude: sigunguCenter.lng,
+    };
+  }
+
+  const fallbackCenter = SIDO_COORDINATES[region?.sidoName];
 
   if (fallbackCenter) {
     return {
@@ -89,13 +118,14 @@ function normalizeAdoptedPlace(item, region) {
     id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
     postId,
     icon: item.icon || '📍',
-    title: item.title || placeName,
+    title: placeName,
     name: placeName,
     category: item.category || item.categoryTag || '채택 명소',
     generation: item.generation || item.ageTag || item.generationTag || '전체',
     passCount: item.passCount || `좋아요 ${adoptionCount}`,
     latitude: Number.isFinite(latitude) ? latitude : regionCenter.latitude,
     longitude: Number.isFinite(longitude) ? longitude : regionCenter.longitude,
+    hasCoordinates: Number.isFinite(latitude) && Number.isFinite(longitude),
     region: item.region || item.regionName || region?.fullName || '선택한 지역',
     likes: adoptionCount,
     adoptedAt: item.adoptedAt,
@@ -245,20 +275,42 @@ export default function MapScreen() {
   const { exitGuestMode, isGuest, user } = useAuth();
   const navigation = useNavigation();
   const sheetAnimation = useSharedValue(0);
+  const mapRef = useRef(null);
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
   const [selectedPin, setSelectedPin] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [regionRecommendations, setRegionRecommendations] = useState([]);
+  const [regionCenterOverride, setRegionCenterOverride] = useState(null);
   useBalance();
   const { regions } = useRegions();
 
   const normalizedSearchText = searchText.trim().toLowerCase();
-  const selectedRegionCenter = useMemo(
-    () => resolveRegionCenter(selectedRegion),
-    [selectedRegion],
-  );
+  const selectedRegionCenter = useMemo(() => {
+    const firstPlace = regionRecommendations[0];
+
+    if (firstPlace?.hasCoordinates) {
+      return {
+        latitude: firstPlace.latitude,
+        longitude: firstPlace.longitude,
+      };
+    }
+
+    return regionCenterOverride || resolveRegionCenter(selectedRegion);
+  }, [regionCenterOverride, regionRecommendations, selectedRegion]);
+
+  const selectedMapZoom = useMemo(() => {
+    if (regionRecommendations.some((place) => place.hasCoordinates)) {
+      return 14;
+    }
+
+    if (selectedRegion?.sigunguName) {
+      return 13;
+    }
+
+    return 10;
+  }, [regionRecommendations, selectedRegion]);
 
   const filteredRecommendations = useMemo(
     () =>
@@ -314,17 +366,58 @@ export default function MapScreen() {
 
   useEffect(() => {
     let isMounted = true;
+    const regionCode = selectedRegion?.regionCode;
+    const existingLatitude = Number(selectedRegion?.centerLatitude);
+    const existingLongitude = Number(selectedRegion?.centerLongitude);
+
+    setRegionCenterOverride(null);
+
+    if (
+      !regionCode ||
+      (Number.isFinite(existingLatitude) && Number.isFinite(existingLongitude))
+    ) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    async function loadRegionCenter() {
+      try {
+        const regionDetail = await fetchRegionByCode(regionCode);
+        const latitude = Number(regionDetail?.centerLatitude);
+        const longitude = Number(regionDetail?.centerLongitude);
+
+        if (isMounted && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          setRegionCenterOverride({ latitude, longitude });
+        }
+      } catch (error) {
+        console.warn('지역 중심 좌표 조회 실패. 기본 좌표를 사용합니다.', error?.message);
+      }
+    }
+
+    void loadRegionCenter();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedRegion?.centerLatitude, selectedRegion?.centerLongitude, selectedRegion?.regionCode]);
+
+  useEffect(() => {
+    let isMounted = true;
 
     async function loadRegionRecommendations() {
-      if (!selectedRegion?.regionCode) {
+      const regionCode = selectedRegion?.regionCode;
+
+      if (!regionCode) {
         setRegionRecommendations([]);
         return;
       }
 
+      console.log('[지도] regionCode:', regionCode);
+
       try {
         const data = await apiClient.get('/api/places/adopted', {
-          params: { regionCode: selectedRegion.regionCode },
-          skipAuth: true,
+          params: { regionCode },
         });
         const nextRecommendations = Array.isArray(data)
           ? data.map((item) => normalizeAdoptedPlace(item, selectedRegion))
@@ -349,8 +442,48 @@ export default function MapScreen() {
     };
   }, [selectedRegion]);
 
+  useEffect(() => {
+    console.log('[지도] mapRef:', mapRef.current);
+    console.log(
+      '[지도] 이동할 좌표:',
+      selectedRegionCenter.latitude,
+      selectedRegionCenter.longitude,
+      selectedMapZoom,
+    );
+
+    const timeoutId = setTimeout(() => {
+      console.log('[지도] mapRef 존재:', !!mapRef.current);
+
+      if (!mapRef.current) {
+        return;
+      }
+
+      console.log('[지도] animateCameraTo 시도:', {
+        latitude: selectedRegionCenter.latitude,
+        longitude: selectedRegionCenter.longitude,
+        zoom: selectedMapZoom,
+        duration: 500,
+      });
+      mapRef.current.animateCameraTo({
+        latitude: selectedRegionCenter.latitude,
+        longitude: selectedRegionCenter.longitude,
+        zoom: selectedMapZoom,
+        duration: 500,
+      });
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedMapZoom, selectedRegionCenter]);
+
   const handleSelectRegion = (region) => {
+    const center = resolveRegionCenter(region);
+
+    console.log('[지도] 지역 선택:', region?.sidoName, region?.sigunguName);
+    console.log('[지도] 이동 좌표:', center.latitude, center.longitude);
+
     setSelectedRegion(region);
+    setRegionRecommendations([]);
+    setRegionCenterOverride(null);
     setSelectedPin(null);
     setShowAlternatives(false);
   };
@@ -537,8 +670,10 @@ export default function MapScreen() {
 
         <View style={styles.mapArea}>
           <NaverMapView
+            ref={mapRef}
             latitude={selectedRegionCenter.latitude}
             longitude={selectedRegionCenter.longitude}
+            zoom={selectedMapZoom}
             markers={filteredMarkers}
             onMarkerPress={handleSelectMarker}
             style={styles.naverMap}

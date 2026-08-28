@@ -42,15 +42,19 @@ const PASS_PLACES = [
 ];
 
 function normalizePassBalance(payload) {
-  return Number(payload?.balance ?? payload?.localPassBalance ?? payload ?? 0);
+  return Number(
+    payload?.balance ?? payload?.balanceAfter ?? payload?.localPassBalance ?? payload ?? 0,
+  );
 }
 
 function normalizeHistoryItem(item) {
+  const amount = Number(item.amount ?? 0);
+
   return {
-    id: item.id ?? item.historyId ?? `${item.placeId || item.placeName}-${item.usedAt || Date.now()}`,
-    place: item.place || `${item.region || ''}${item.region ? '·' : ''}${item.placeName || '사용처'}`,
-    date: item.date || item.usedAt || '방금 전',
-    amount: item.amount ? `${item.amount > 0 ? '+' : ''}${item.amount}개` : '-1개',
+    id: item.id ?? item.historyId ?? `${item.referenceId || item.placeId || item.placeName}-${item.createdAt || Date.now()}`,
+    place: item.place || item.placeName || item.reasonLabel || '로컬패스 내역',
+    date: item.date || item.usedAt || item.createdAt || '방금 전',
+    amount: `${amount > 0 ? '+' : ''}${amount}개`,
   };
 }
 
@@ -198,10 +202,7 @@ function AuthenticatedLocalPassScreen() {
       const nextHistory = normalizeHistoryResponse(historyData);
 
       setLocalPassBalance(nextBalance);
-
-      if (nextHistory.length > 0) {
-        setUsageHistoryItems(nextHistory);
-      }
+      setUsageHistoryItems(nextHistory);
     } catch (error) {
       console.warn('Local pass API fallback to mock data.', error?.message);
       setUsageHistoryItems((currentItems) => (currentItems.length > 0 ? currentItems : usageHistory));
@@ -218,11 +219,10 @@ function AuthenticatedLocalPassScreen() {
       }
 
       setOngoingPick(getMyPostProgress());
-      void loadLocalPassData({ showLoading: usageHistoryItems.length === 0 });
+      void loadLocalPassData({ showLoading: true });
     }, [
       accessToken,
       loadLocalPassData,
-      usageHistoryItems.length,
       user?.badgeStatus,
       user?.isResidentVerified,
     ]),
@@ -262,19 +262,21 @@ function AuthenticatedLocalPassScreen() {
             try {
               console.log('accessToken:', accessToken ? '있음' : '없음');
               const data = await apiClient.post('/api/local-pass/use', {
-                placeId: place.id,
+                postId: place.id,
                 placeName: place.name,
               });
               const nextBalance = normalizePassBalance(data);
-              const nextHistoryItem = data?.history ? normalizeHistoryItem(data.history) : null;
+              const nextHistoryItem = data?.amount !== undefined ? normalizeHistoryItem(data) : null;
 
-              setLocalPassBalance(nextBalance);
+              if (data?.balanceAfter !== undefined || data?.balance !== undefined) {
+                setLocalPassBalance(nextBalance);
+              } else {
+                await loadLocalPassData();
+              }
               setIsPlaceModalVisible(false);
 
               if (nextHistoryItem) {
                 setUsageHistoryItems((currentItems) => [nextHistoryItem, ...currentItems]);
-              } else {
-                await loadLocalPassData();
               }
 
               Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');

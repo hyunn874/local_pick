@@ -1,32 +1,31 @@
+import { forwardRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   NaverMapMarkerOverlay,
   NaverMapView as NativeNaverMapView,
 } from '@mj-studio/react-native-naver-map';
 
-export default function NaverMapView({
+const NaverMapView = forwardRef(function NaverMapView({
   latitude = 36.3504,
   longitude = 127.3845,
+  zoom = 10,
   markers = [],
   onMarkerPress,
   style,
-}) {
+}, ref) {
   const visibleMarkers = markers.filter(
     (marker) => Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude),
   );
-  const markerSignature = visibleMarkers
-    .map((marker) => `${marker.id}:${marker.latitude}:${marker.longitude}`)
-    .join('|');
 
   return (
     <View style={[styles.container, style]}>
       <NativeNaverMapView
-        key={`${latitude}-${longitude}-${markerSignature}`}
+        ref={ref}
         style={styles.map}
         initialCamera={{
           latitude,
           longitude,
-          zoom: 13,
+          zoom,
         }}
         mapType="Basic"
         isShowCompass={false}
@@ -51,7 +50,9 @@ export default function NaverMapView({
       </NativeNaverMapView>
     </View>
   );
-}
+});
+
+export default NaverMapView;
 
 const styles = StyleSheet.create({
   container: {
