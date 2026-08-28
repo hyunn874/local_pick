@@ -1,8 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+
+import apiClient from '../api/apiClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -60,6 +63,42 @@ const adoptedPlaceItems = [
   },
 ];
 
+function getUserRegionCode(user) {
+  if (typeof user?.region === 'object') {
+    return user.region.regionCode || user.region.code;
+  }
+
+  return user?.regionCode || user?.region?.code;
+}
+
+function getUserRegionName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '내 거주지';
+}
+
+function normalizeAdoptedPlace(item, regionName) {
+  const postId = item.postId ?? item.id;
+  const placeName = item.placeName || item.name || item.title || '채택 명소';
+
+  return {
+    id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
+    postId,
+    imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
+    name: placeName,
+    title: item.title || placeName,
+    region: item.region || item.regionName || regionName,
+    category: item.category || item.categoryTag || '채택 명소',
+    ageTag: item.ageTag || item.generation || item.generationTag || '전체',
+    likes: Number(item.likes ?? item.likeCount ?? item.adoptionCount ?? 0),
+    adoptedAt: item.adoptedAt,
+    latitude: item.latitude,
+    longitude: item.longitude,
+  };
+}
+
 function Header({ navigation }) {
   return (
     <View style={styles.header}>
@@ -108,14 +147,70 @@ function PlaceCard({ item }) {
 }
 
 export default function AdoptedPlacesScreen({ navigation }) {
+  const { user } = useAuth();
   const [selectedAgeFilter, setSelectedAgeFilter] = useState('전체');
+  const [places, setPlaces] = useState(adoptedPlaceItems);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const regionCode = getUserRegionCode(user);
+  const regionName = getUserRegionName(user);
   const filteredPlaces = useMemo(
     () =>
       selectedAgeFilter === '전체'
-        ? adoptedPlaceItems
-        : adoptedPlaceItems.filter((place) => place.ageTag === selectedAgeFilter),
-    [selectedAgeFilter],
+        ? places
+        : places.filter((place) => place.ageTag === selectedAgeFilter),
+    [places, selectedAgeFilter],
   );
+
+  const loadAdoptedPlaces = useCallback(async () => {
+    let isMounted = true;
+
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      if (!regionCode) {
+        throw new Error('사용자 거주지 regionCode가 없습니다.');
+      }
+
+      const data = await apiClient.get('/api/places/adopted', {
+        params: { regionCode },
+        skipAuth: true,
+      });
+      const nextPlaces = Array.isArray(data)
+        ? data.map((item) => normalizeAdoptedPlace(item, regionName))
+        : [];
+
+      if (isMounted) {
+        setPlaces(nextPlaces);
+      }
+    } catch (error) {
+      console.warn('Adopted places API fallback to mock data.', error?.message);
+      setLoadError('데이터를 불러오지 못했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      if (isMounted) {
+        setIsLoading(false);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [regionCode, regionName]);
+
+  useEffect(() => {
+    let cleanup;
+
+    async function runLoadAdoptedPlaces() {
+      cleanup = await loadAdoptedPlaces();
+    }
+
+    void runLoadAdoptedPlaces();
+
+    return () => {
+      cleanup?.();
+    };
+  }, [loadAdoptedPlaces]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -138,18 +233,41 @@ export default function AdoptedPlacesScreen({ navigation }) {
           );
         })}
       </View>
-      <FlatList
-        data={filteredPlaces}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => <PlaceCard item={item} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>📍</Text>
-            <Text style={styles.emptyText}>조건에 맞는 명소가 없어요</Text>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator color={MAIN_GREEN} />
+        </View>
+      ) : (
+        <>
+          {!!loadError && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{loadError}</Text>
+              <TouchableOpacity
+                style={styles.retryButton}
+                activeOpacity={0.7}
+                onPress={loadAdoptedPlaces}
+              >
+                <Text style={styles.retryButtonText}>재시도</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <FlatList
+            data={filteredPlaces}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={[
+              styles.listContent,
+              filteredPlaces.length === 0 && styles.emptyListContent,
+            ]}
+            renderItem={({ item }) => <PlaceCard item={item} />}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyIcon}>📍</Text>
+                <Text style={styles.emptyText}>아직 채택된 명소가 없어요</Text>
+              </View>
+            }
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -214,6 +332,44 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 20,
     paddingBottom: 40,
+  },
+  emptyListContent: {
+    flexGrow: 1,
+  },
+  loadingState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  errorBox: {
+    backgroundColor: '#FFF5F0',
+    borderColor: '#F2C7B5',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: 14,
+    padding: 14,
+  },
+  errorText: {
+    color: '#A84A24',
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 19,
+  },
+  retryButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  retryButtonText: {
+    color: CARD,
+    fontSize: 13,
+    fontWeight: '900',
   },
   placeCard: {
     backgroundColor: CARD,

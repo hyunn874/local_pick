@@ -86,9 +86,15 @@ function parseRegionText(regionText) {
 }
 
 export default function ResidentVerificationScreen({ navigation }) {
-  const { accessToken } = useAuth();
+  const { user, accessToken, updateUser } = useAuth();
   const [step, setStep] = useState(1);
-  const [regionInput, setRegionInput] = useState('');
+  const [regionInput, setRegionInput] = useState(() => {
+    if (typeof user?.region === 'string') {
+      return user.region;
+    }
+
+    return user?.region?.fullName || '';
+  });
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [residentStatus, setResidentStatus] = useState({
     isVerified: false,

@@ -3,8 +3,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -268,6 +270,32 @@ export default function PostDetailScreen({ navigation, route }) {
     );
   };
 
+  const handleShare = async () => {
+    if (!post) {
+      return;
+    }
+
+    try {
+      try {
+        await Linking.canOpenURL('kakaotalk://');
+      } catch {
+        // 기본 공유 시트는 카카오톡 scheme 확인 실패와 무관하게 열 수 있다.
+      }
+
+      const shareContent = {
+        title: `로컬픽 - ${post.title}`,
+        message: `로컬픽에서 발견한 숨은 명소!\n\n📍 ${post.title}\n${post.content}\n\n로컬픽에서 더 많은 명소를 발견해보세요!`,
+      };
+      const result = await Share.share(shareContent);
+
+      if (result.action === Share.sharedAction) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      Alert.alert('공유 실패', '공유하기를 다시 시도해주세요.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -353,6 +381,14 @@ export default function PostDetailScreen({ navigation, route }) {
                   <Text style={styles.countText}>좋아요 {likeCount}</Text>
                   <Text style={styles.countText}>댓글 {commentCount}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.shareButton}
+                  activeOpacity={0.7}
+                  onPress={handleShare}
+                >
+                  <Ionicons name="share-social-outline" size={18} color={MAIN_GREEN} />
+                  <Text style={styles.shareButtonText}>공유하기</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.commentSection}>
@@ -606,6 +642,23 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
     fontSize: 13,
     fontWeight: '800',
+  },
+  shareButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  shareButtonText: {
+    color: MAIN_GREEN,
+    fontSize: 13,
+    fontWeight: '900',
   },
   commentSection: {
     marginTop: 18,
