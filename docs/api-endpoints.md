@@ -1,7 +1,7 @@
 # LocalPick API 명세서
 
 > **Base URL:** `https://localpick-api.fly.dev`
-> **최종 갱신:** 2026-08-27
+> **최종 갱신:** 2026-08-28
 
 ---
 
@@ -15,8 +15,9 @@
 6. [예측 (Prediction)](#5-예측-prediction)
 7. [댓글 (Comment)](#6-댓글-comment)
 8. [게시글 (Post)](#7-게시글-post)
-9. [채택 명소 (Place)](#8-채택-명소-place)
-10. [헬스체크](#9-헬스체크)
+9. [로컬패스 (LocalPass)](#8-로컬패스-localpass)
+10. [채택 명소 (Place)](#9-채택-명소-place)
+11. [헬스체크](#10-헬스체크)
 11. [Enum 허용값](#enum-허용값)
 12. [에러 코드 전체 목록](#에러-코드-전체-목록)
 
@@ -761,7 +762,100 @@ GET /api/posts/{postId}/comments
 
 ## 7. 게시글 (Post)
 
-### 7-1. 좋아요 토글
+### 7-1. 게시글 목록 조회
+
+```
+GET /api/posts?region={regionCode}
+```
+
+| 항목 | 값 |
+|------|----|
+| 인증 | 불필요 (GET) |
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| region | string | 선택 | 법정동코드 앞 5자리. 생략하면 전체 |
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "title": "밤에 가면 진짜 예뻐요",
+      "content": "엑스포다리 야경이 정말 좋습니다...",
+      "category": "NIGHT_VIEW",
+      "ageTag": "TWENTIES",
+      "regionCode": "30200",
+      "regionName": "대전광역시 유성구",
+      "latitude": 36.374,
+      "longitude": 127.372,
+      "authorId": 5,
+      "authorNickname": "유성구주민",
+      "authorProfileImageUrl": "https://k.kakaocdn.net/...",
+      "likeCount": 12,
+      "commentCount": 3,
+      "adoptionCount": 8,
+      "isAdopted": false,
+      "createdAt": "2026-08-27T14:30:00"
+    }
+  ]
+}
+```
+
+---
+
+### 7-2. 게시글 작성
+
+```
+POST /api/posts
+```
+
+| 항목 | 값 |
+|------|----|
+| 인증 | **필요** |
+| Content-Type | `application/json` |
+
+**요청:**
+
+```json
+{
+  "title": "밤에 가면 진짜 예뻐요",
+  "content": "엑스포다리 야경이 정말 좋습니다...",
+  "category": "NIGHT_VIEW",
+  "regionCode": "30200",
+  "latitude": 36.374,
+  "longitude": 127.372,
+  "imageUrls": ["https://storage.example.com/img1.jpg"]
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| title | string | 필수 | 2~50자 |
+| content | string | 필수 | 10~1000자 |
+| category | string | 필수 | 명소 카테고리 |
+| regionCode | string | 필수 | 법정동코드 앞 5자리 |
+| latitude | double | 필수 | 명소 위도 |
+| longitude | double | 필수 | 명소 경도 |
+| imageUrls | string[] | 선택 | 이미지 URL 목록 |
+
+**응답:** 7-1의 단일 객체와 동일.
+
+**에러:**
+
+| 코드 | 상황 |
+|------|------|
+| A001 | 토큰 없음 |
+| P003 | 해당 지역 거주자 인증 필요 |
+| R001 | 지역 없음 |
+| C001 | 입력값 검증 실패 |
+
+---
+
+### 7-3. 좋아요 토글
 
 좋아요가 없으면 추가, 이미 있으면 취소.
 
@@ -810,7 +904,131 @@ POST /api/posts/{postId}/like
 
 ---
 
-## 8. 채택 명소 (Place)
+## 8. 로컬패스 (LocalPass)
+
+### 8-1. 잔액 조회
+
+```
+GET /api/local-pass/balance
+```
+
+| 항목 | 값 |
+|------|----|
+| 인증 | **필요** |
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "balance": 55
+  }
+}
+```
+
+---
+
+### 8-2. 적립·사용 이력 조회
+
+```
+GET /api/local-pass/history
+```
+
+| 항목 | 값 |
+|------|----|
+| 인증 | **필요** |
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "amount": 5,
+      "reason": "SIGNUP_BONUS",
+      "reasonLabel": "가입 축하",
+      "referenceId": null,
+      "balanceAfter": 5,
+      "createdAt": "2026-08-27T10:00:00"
+    },
+    {
+      "id": 2,
+      "amount": 50,
+      "reason": "POST_ADOPTED",
+      "reasonLabel": "명소 채택",
+      "referenceId": 1,
+      "balanceAfter": 55,
+      "createdAt": "2026-08-27T14:30:00"
+    }
+  ]
+}
+```
+
+> 최신순 정렬. `amount`가 양수면 적립, 음수면 사용.
+
+---
+
+### 8-3. 로컬패스 사용
+
+```
+POST /api/local-pass/use
+```
+
+| 항목 | 값 |
+|------|----|
+| 인증 | **필요** |
+| Content-Type | `application/json` |
+
+**요청:**
+
+```json
+{
+  "amount": 10,
+  "reason": "REWARD_EXCHANGED"
+}
+```
+
+**응답:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "amount": -10,
+    "reason": "REWARD_EXCHANGED",
+    "reasonLabel": "리워드 교환",
+    "balanceAfter": 45,
+    "createdAt": "2026-08-28T15:00:00"
+  }
+}
+```
+
+**에러:**
+
+| 코드 | 상황 |
+|------|------|
+| A001 | 토큰 없음 |
+| L001 | 잔액 부족 |
+
+---
+
+### LocalPassReason 허용값
+
+| 값 | 기본 금액 | 라벨 |
+|----|-----------|------|
+| `SIGNUP_BONUS` | 5 | 가입 축하 |
+| `POST_ADOPTED` | 50 | 명소 채택 |
+| `FIRST_POST_IN_REGION` | 30 | 발굴 지역 첫 제보 |
+| `RESIDENT_VERIFIED` | 20 | 거주자 인증 완료 |
+| `ADOPTION_PARTICIPATED` | 5 | 채택 참여 |
+| `REWARD_EXCHANGED` | 0 (가변) | 리워드 교환 |
+
+---
+
+## 9. 채택 명소 (Place)
 
 ### 8-1. 채택된 명소 목록
 
@@ -860,7 +1078,7 @@ GET /api/places/adopted?regionCode={regionCode}
 
 ---
 
-## 9. 헬스체크
+## 10. 헬스체크
 
 ### 9-1. 서버 상태
 
