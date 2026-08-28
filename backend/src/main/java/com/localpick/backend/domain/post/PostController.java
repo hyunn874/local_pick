@@ -44,4 +44,30 @@ public class PostController {
             @PathVariable Long postId) {
         return ApiResponse.ok(postService.toggleLike(userId, postId));
     }
+
+    /** POST /api/posts/{postId}/adopt — 채택 투표 */
+    @PostMapping("/{postId}/adopt")
+    public ApiResponse<AdoptionResponse> adopt(
+            @CurrentUserId Long userId,
+            @PathVariable Long postId) {
+        return ApiResponse.ok(postService.vote(userId, postId));
+    }
+
+    /** PUT /api/posts/{postId} — 게시글 수정 */
+    @PutMapping("/{postId}")
+    public ApiResponse<PostResponse> update(
+            @CurrentUserId Long userId,
+            @PathVariable Long postId,
+            @Valid @RequestBody PostCreateRequest request) {
+        return ApiResponse.ok(postService.update(userId, postId, request));
+    }
+
+    /** DELETE /api/posts/{postId} — 게시글 삭제 */
+    @DeleteMapping("/{postId}")
+    public ApiResponse<Void> delete(
+            @CurrentUserId Long userId,
+            @PathVariable Long postId) {
+        postService.delete(userId, postId);
+        return ApiResponse.ok(null);
+    }
 }

@@ -5,8 +5,12 @@ import com.localpick.backend.domain.region.RegionRepository;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.domain.verification.ResidentVerificationRepository;
+import com.localpick.backend.domain.localpass.LocalPassHistory;
+import com.localpick.backend.domain.localpass.LocalPassHistoryRepository;
+import com.localpick.backend.domain.localpass.LocalPassReason;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,9 +25,11 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostLikeRepository postLikeRepository;
+    private final AdoptionVoteRepository adoptionVoteRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
     private final ResidentVerificationRepository verificationRepository;
+    private final LocalPassHistoryRepository localPassHistoryRepository;
 
     /** 게시글 목록 조회 */
     @Transactional(readOnly = true)
@@ -116,5 +122,87 @@ public class PostService {
                 .stream()
                 .map(AdoptedPlaceResponse::from)
                 .toList();
+    }
+
+    /** 채택 투표 — 거주자 인증된 사용자만, 한 게시글에 1회만 */
+    @Transactional
+    public AdoptionResponse vote(Long userId, Long postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        // 거주자 인증 확인
+        boolean isResident = verificationRepository
+                .findByUserIdAndRegionId(userId, post.getRegion().getId())
+                .map(v -> v.isVerified())
+                .orElse(false);
+        if (!isResident) {
+            throw new BusinessException(ErrorCode.NOT_RESIDENT);
+        }
+
+        // 중복 투표 확인
+        if (adoptionVoteRepository.existsByPostIdAndUserId(postId, userId)) {
+            throw new BusinessException(ErrorCode.ALREADY_ADOPTED);
+        }
+
+        adoptionVoteRepository.save(AdoptionVote.builder()
+                .post(post).user(user).build());
+
+        boolean justAdopted = post.increaseAdoption(LocalDateTime.now());
+
+        // 채택 확정 시 작성자에게 로컬패스 지급
+        if (justAdopted) {
+            User author = post.getAuthor();
+            int reward = LocalPassReason.POST_ADOPTED.getAmount();
+            author.applyLocalPassDelta(reward);
+            localPassHistoryRepository.save(LocalPassHistory.builder()
+                    .user(author)
+                    .amount(reward)
+                    .reason(LocalPassReason.POST_ADOPTED)
+                    .referenceId(postId)
+                    .balanceAfter(author.getLocalPassBalance())
+                    .build());
+        }
+
+        // 투표자에게 참여 보상
+        int participationReward = LocalPassReason.ADOPTION_PARTICIPATED.getAmount();
+        user.applyLocalPassDelta(participationReward);
+        localPassHistoryRepository.save(LocalPassHistory.builder()
+                .user(user)
+                .amount(participationReward)
+                .reason(LocalPassReason.ADOPTION_PARTICIPATED)
+                .referenceId(postId)
+                .balanceAfter(user.getLocalPassBalance())
+                .build());
+
+        return new AdoptionResponse(postId, post.getAdoptionCount(), post.isAdopted(), justAdopted);
+    }
+
+    /** 게시글 수정 — 본인만 가능 */
+    @Transactional
+    public PostResponse update(Long userId, Long postId, PostCreateRequest request) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+
+        if (!post.isAuthor(userId)) {
+            throw new BusinessException(ErrorCode.NOT_POST_AUTHOR);
+        }
+
+        post.edit(request.title(), request.content(), request.placeName());
+        return PostResponse.from(post);
+    }
+
+    /** 게시글 삭제 — 본인만 가능 */
+    @Transactional
+    public void delete(Long userId, Long postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+
+        if (!post.isAuthor(userId)) {
+            throw new BusinessException(ErrorCode.NOT_POST_AUTHOR);
+        }
+
+        postRepository.delete(post);
     }
 }
