@@ -17,6 +17,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import apiClient from '../api/apiClient';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +36,25 @@ const { height } = Dimensions.get('window');
 const YUSEONG_CENTER = {
   latitude: 36.3504,
   longitude: 127.3845,
+};
+
+const regionCoordinates = {
+  '서울특별시': { lat: 37.5665, lng: 126.9780 },
+  '부산광역시': { lat: 35.1796, lng: 129.0756 },
+  '대구광역시': { lat: 35.8714, lng: 128.6014 },
+  '인천광역시': { lat: 37.4563, lng: 126.7052 },
+  '광주광역시': { lat: 35.1595, lng: 126.8526 },
+  '대전광역시': { lat: 36.3504, lng: 127.3845 },
+  '울산광역시': { lat: 35.5384, lng: 129.3114 },
+  '경기도': { lat: 37.4138, lng: 127.5183 },
+  '강원특별자치도': { lat: 37.8228, lng: 128.1555 },
+  '충청북도': { lat: 36.6357, lng: 127.4912 },
+  '충청남도': { lat: 36.5184, lng: 126.8000 },
+  '전북특별자치도': { lat: 35.7175, lng: 127.1530 },
+  '전라남도': { lat: 34.8679, lng: 126.9910 },
+  '경상북도': { lat: 36.4919, lng: 128.8889 },
+  '경상남도': { lat: 35.4606, lng: 128.2132 },
+  '제주특별자치도': { lat: 33.4996, lng: 126.5312 },
 };
 
 const mapMarkers = [
@@ -60,6 +80,57 @@ const mapMarkers = [
     category: '산책',
   },
 ];
+
+function resolveRegionCenter(region) {
+  if (Number.isFinite(region?.centerLatitude) && Number.isFinite(region?.centerLongitude)) {
+    return {
+      latitude: region.centerLatitude,
+      longitude: region.centerLongitude,
+    };
+  }
+
+  const fallbackCenter = regionCoordinates[region?.sidoName];
+
+  if (fallbackCenter) {
+    return {
+      latitude: fallbackCenter.lat,
+      longitude: fallbackCenter.lng,
+    };
+  }
+
+  return YUSEONG_CENTER;
+}
+
+function normalizeAdoptedPlace(item, region) {
+  const postId = item.postId ?? item.id;
+  const placeName = item.placeName || item.name || item.title || '채택 명소';
+
+  return {
+    id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
+    postId,
+    icon: item.icon || '📍',
+    title: item.title || placeName,
+    name: placeName,
+    category: item.category || item.categoryTag || '채택 명소',
+    generation: item.generation || item.ageTag || item.generationTag || '전체',
+    passCount: item.passCount || `좋아요 ${item.adoptionCount ?? item.likes ?? 0}`,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    region: item.region || item.regionName || region?.fullName || '선택한 지역',
+    likes: Number(item.likes ?? item.likeCount ?? item.adoptionCount ?? 0),
+    adoptedAt: item.adoptedAt,
+    imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
+  };
+}
+
+function getMockRecommendationsForRegion(region) {
+  const regionName = region?.fullName || '대전 유성구';
+
+  return recommendedPlaces.map((place) => ({
+    ...place,
+    region: regionName,
+  }));
+}
 
 function GenerationFilter({ label, selectedFilter, onPress }) {
   const isSelected = selectedFilter === label;
@@ -208,14 +279,19 @@ export default function MapScreen() {
   const [selectedPin, setSelectedPin] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
+  const [regionRecommendations, setRegionRecommendations] = useState(recommendedPlaces);
   useBalance();
   const { regions } = useRegions();
 
   const normalizedSearchText = searchText.trim().toLowerCase();
+  const selectedRegionCenter = useMemo(
+    () => resolveRegionCenter(selectedRegion),
+    [selectedRegion],
+  );
 
   const filteredRecommendations = useMemo(
     () =>
-      recommendedPlaces.filter((place) => {
+      regionRecommendations.filter((place) => {
         const matchesFilter =
           selectedFilter === '전체' || place.generation === selectedFilter;
         const matchesSearch =
@@ -225,20 +301,38 @@ export default function MapScreen() {
 
         return matchesFilter && matchesSearch;
       }),
-    [normalizedSearchText, selectedFilter]
+    [normalizedSearchText, regionRecommendations, selectedFilter],
   );
 
   const filteredMarkers = useMemo(
-    () =>
-      mapMarkers.filter((marker) => {
+    () => {
+      const sourceMarkers = regionRecommendations.some((place) =>
+        Number.isFinite(place.latitude) && Number.isFinite(place.longitude),
+      )
+        ? regionRecommendations.map((place) => ({
+            ...place,
+            id: place.id,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            title: place.title,
+          }))
+        : mapMarkers.map((marker) => ({
+            ...marker,
+            latitude: selectedRegionCenter.latitude + (marker.latitude - YUSEONG_CENTER.latitude),
+            longitude: selectedRegionCenter.longitude + (marker.longitude - YUSEONG_CENTER.longitude),
+            region: selectedRegion?.fullName,
+          }));
+
+      return sourceMarkers.filter((marker) => {
         const matchesSearch =
           !normalizedSearchText ||
           marker.title.toLowerCase().includes(normalizedSearchText) ||
           marker.category.toLowerCase().includes(normalizedSearchText);
 
         return matchesSearch;
-      }),
-    [normalizedSearchText],
+      });
+    },
+    [normalizedSearchText, regionRecommendations, selectedRegion?.fullName, selectedRegionCenter],
   );
 
   const hasSearchResults =
@@ -256,6 +350,49 @@ export default function MapScreen() {
       setSelectedRegion(userRegion);
     }
   }, [regions, selectedRegion, user?.region?.code]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadRegionRecommendations() {
+      if (!selectedRegion?.regionCode) {
+        setRegionRecommendations(getMockRecommendationsForRegion(selectedRegion));
+        return;
+      }
+
+      try {
+        const data = await apiClient.get('/api/places/adopted', {
+          params: { regionCode: selectedRegion.regionCode },
+          skipAuth: true,
+        });
+        const nextRecommendations = Array.isArray(data)
+          ? data.map((item) => normalizeAdoptedPlace(item, selectedRegion))
+          : [];
+
+        if (isMounted) {
+          setRegionRecommendations(nextRecommendations);
+        }
+      } catch (error) {
+        console.warn('Map adopted places API fallback to mock data.', error?.message);
+
+        if (isMounted) {
+          setRegionRecommendations(getMockRecommendationsForRegion(selectedRegion));
+        }
+      }
+    }
+
+    void loadRegionRecommendations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedRegion]);
+
+  const handleSelectRegion = (region) => {
+    setSelectedRegion(region);
+    setSelectedPin(null);
+    setShowAlternatives(false);
+  };
 
   useEffect(() => {
     if (!selectedPin) {
@@ -302,7 +439,9 @@ export default function MapScreen() {
   };
 
   const handleShowAllRecommendations = () => {
-    navigation.navigate('AllRecommend');
+    navigation.navigate('AllRecommend', {
+      region: selectedRegion,
+    });
   };
 
   const handleUsePass = () => {
@@ -410,7 +549,7 @@ export default function MapScreen() {
 
             <RegionSelector
               selectedRegion={selectedRegion}
-              onSelectRegion={setSelectedRegion}
+              onSelectRegion={handleSelectRegion}
             />
           </View>
 
@@ -429,8 +568,8 @@ export default function MapScreen() {
         <View style={styles.mapArea}>
           {filteredMarkers.length > 0 ? (
             <NaverMapView
-              latitude={YUSEONG_CENTER.latitude}
-              longitude={YUSEONG_CENTER.longitude}
+              latitude={selectedRegionCenter.latitude}
+              longitude={selectedRegionCenter.longitude}
               markers={filteredMarkers}
               onMarkerPress={handleSelectMarker}
               style={styles.naverMap}
@@ -444,7 +583,9 @@ export default function MapScreen() {
 
         <View style={styles.recommendationSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>이 구역의 로컬 추천</Text>
+            <Text style={styles.sectionTitle}>
+              {selectedRegion?.fullName ? `${selectedRegion.fullName}의 명소` : '이 구역의 로컬 추천'}
+            </Text>
             <TouchableOpacity activeOpacity={0.7} onPress={handleShowAllRecommendations}>
               <Text style={styles.sectionLink}>전체보기 &gt;</Text>
             </TouchableOpacity>

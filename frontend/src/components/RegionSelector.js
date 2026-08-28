@@ -43,6 +43,11 @@ export default function RegionSelector({
   }, [normalizedSearchText, regions]);
 
   const selectedLabel = selectedRegion?.fullName || placeholder;
+  const metaLabel = selectedRegion?.fullName
+    ? `${selectedRegion.fullName}의 명소`
+    : isLoading
+      ? '지역 목록 불러오는 중'
+      : `${count}개 지역`;
 
   const handleSelectRegion = (region) => {
     onSelectRegion?.(region);
@@ -74,7 +79,7 @@ export default function RegionSelector({
               {selectedLabel}
             </Text>
             <Text style={styles.selectorMeta}>
-              {isLoading ? '지역 목록 불러오는 중' : `${count}개 지역`}
+              {metaLabel}
             </Text>
           </View>
         </View>

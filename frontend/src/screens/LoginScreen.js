@@ -170,7 +170,7 @@ export default function LoginScreen({ navigation: navigationProp }) {
           >
             <Text style={styles.guestButtonText}>로그인 없이 둘러보기</Text>
           </TouchableOpacity>
-          {__DEV__ && (
+          {false && (
             <TouchableOpacity
               style={styles.devButton}
               activeOpacity={0.85}

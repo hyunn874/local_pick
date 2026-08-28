@@ -197,7 +197,6 @@ export default function RootTabNavigator() {
       <Stack.Screen name="Settings" component={SettingsRoute} />
       <Stack.Screen name="AdoptedPlaces" component={AdoptedPlacesScreen} />
       <Stack.Screen name="Notification" component={NotificationScreen} />
-      <Stack.Screen name="Notifications" component={NotificationScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="AllRecommend" component={AllRecommendScreen} />
       <Stack.Screen name="PassHistory" component={PassHistoryScreen} />

@@ -10,6 +10,7 @@ import {
 } from '../api/authApi';
 import { signInWithApple } from '../api/appleApi';
 import { signInWithKakao } from '../api/kakaoAuthApi';
+import { syncBalanceFromServer } from '../state/localPassStore';
 
 const AUTH_STORAGE_KEY = 'localpick.auth';
 const SECURE_STORE_KEYS = [
@@ -124,6 +125,7 @@ export function AuthProvider({ children }) {
     setIsGuest(false);
     syncTokenRefs(normalizedAuthState.accessToken, normalizedAuthState.refreshToken);
     await writeStoredAuth(normalizedAuthState);
+    await syncBalanceFromServer(normalizedAuthState.accessToken);
 
     return normalizedAuthState.user;
   }, [syncTokenRefs]);

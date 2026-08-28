@@ -18,6 +18,7 @@ export default function NaverMapView({
   return (
     <View style={[styles.container, style]}>
       <NativeNaverMapView
+        key={`${latitude}-${longitude}`}
         style={styles.map}
         initialCamera={{
           latitude,

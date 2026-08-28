@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   RefreshControl,
   ScrollView,
@@ -292,10 +293,26 @@ export default function ChatRoomScreen() {
     });
   };
 
-  const handleShare = async () => {
-    await Share.share({
-      message: '로컬픽에서 발견한 명소를 확인해보세요!',
-    });
+  const handleShare = async (post) => {
+    try {
+      try {
+        await Linking.canOpenURL('kakaotalk://');
+      } catch {
+        // 기본 공유 시트는 카카오톡 scheme 확인 실패와 무관하게 열 수 있다.
+      }
+
+      const shareContent = {
+        title: `로컬픽 - ${post.title}`,
+        message: `로컬픽에서 발견한 숨은 명소!\n\n📍 ${post.title}\n${post.content}\n\n로컬픽에서 더 많은 명소를 발견해보세요!`,
+      };
+      const result = await Share.share(shareContent);
+
+      if (result.action === Share.sharedAction) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (error) {
+      Alert.alert('공유 실패', '공유하기를 다시 시도해주세요.');
+    }
   };
 
   const handleToggleLike = async (postId) => {
@@ -502,9 +519,6 @@ export default function ChatRoomScreen() {
             <TouchableOpacity style={styles.iconButton} activeOpacity={0.7} onPress={handleSearchPress}>
               <Text style={styles.iconButtonText}>⌕</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.iconButton, styles.disabledIconButton]} disabled>
-              <Text style={styles.iconButtonText}>⋯</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -573,7 +587,7 @@ export default function ChatRoomScreen() {
                 key={post.id}
                 post={post}
                 onPress={() => handlePostPress(post)}
-                onShare={handleShare}
+                onShare={() => handleShare(post)}
                 onToggleLike={() => handleToggleLike(post.id)}
               />
             ))
@@ -718,9 +732,6 @@ const styles = StyleSheet.create({
     color: MAIN_GREEN,
     fontSize: 22,
     fontWeight: '900',
-  },
-  disabledIconButton: {
-    opacity: 0.3,
   },
   searchBar: {
     alignItems: 'center',
