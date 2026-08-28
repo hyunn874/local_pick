@@ -23,7 +23,7 @@ public record AdoptedPlaceResponse(
                 post.getLongitude(),
                 post.getAdoptionCount(),
                 post.getAdoptedAt(),
-                post.getImageUrls()
+                post.getImageUrls() != null ? List.copyOf(post.getImageUrls()) : List.of()
         );
     }
 }
