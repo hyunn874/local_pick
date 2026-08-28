@@ -14,11 +14,14 @@ export default function NaverMapView({
   const visibleMarkers = markers.filter(
     (marker) => Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude),
   );
+  const markerSignature = visibleMarkers
+    .map((marker) => `${marker.id}:${marker.latitude}:${marker.longitude}`)
+    .join('|');
 
   return (
     <View style={[styles.container, style]}>
       <NativeNaverMapView
-        key={`${latitude}-${longitude}`}
+        key={`${latitude}-${longitude}-${markerSignature}`}
         style={styles.map}
         initialCamera={{
           latitude,

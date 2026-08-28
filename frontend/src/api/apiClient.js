@@ -31,6 +31,7 @@ export const IS_REMOTE_API = API_BASE_URL === PRODUCTION_BASE_URL;
 const authHandlers = {
   getAccessToken: null,
   onUnauthorized: null,
+  onAuthExpired: null,
 };
 
 export class ApiError extends Error {
@@ -174,6 +175,10 @@ export async function requestApi(path, options = {}) {
       if (didRefresh) {
         ({ response, payload } = await sendRequest());
       }
+
+      if (!didRefresh || response.status === 401) {
+        await authHandlers.onAuthExpired?.();
+      }
     }
 
     return unwrapPayload(payload, response);
@@ -195,11 +200,14 @@ export function setAuthHandlers(nextHandlers = {}) {
     typeof nextHandlers.getAccessToken === 'function' ? nextHandlers.getAccessToken : null;
   authHandlers.onUnauthorized =
     typeof nextHandlers.onUnauthorized === 'function' ? nextHandlers.onUnauthorized : null;
+  authHandlers.onAuthExpired =
+    typeof nextHandlers.onAuthExpired === 'function' ? nextHandlers.onAuthExpired : null;
 }
 
 export function clearAuthHandlers() {
   authHandlers.getAccessToken = null;
   authHandlers.onUnauthorized = null;
+  authHandlers.onAuthExpired = null;
 }
 
 export const apiClient = {

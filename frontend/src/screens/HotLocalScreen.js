@@ -32,13 +32,6 @@ const metricColors = {
   red: RED,
 };
 
-function getDaysUntilNextMonday() {
-  const today = new Date();
-  const day = today.getDay();
-
-  return (8 - day) % 7 || 7;
-}
-
 function MetricRow({ metric, animatedProgressStyle }) {
   const metricColor = metricColors[metric.colorKey] || MAIN_GREEN;
 
@@ -129,8 +122,8 @@ export default function HotLocalScreen() {
   const progressAnimation = useSharedValue(0);
   const [weeklyHotLocalData, setWeeklyHotLocalData] = useState(hotLocalData);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMockData, setIsMockData] = useState(false);
   const [expandedRank, setExpandedRank] = useState(null);
-  const nextUpdateDays = getDaysUntilNextMonday();
   const rankOne = weeklyHotLocalData.rankOne;
   const visitorProgress = rankOne?.metrics.find((metric) => metric.id === 'visitor')?.progress ?? 0;
   const spendingProgress = rankOne?.metrics.find((metric) => metric.id === 'spending')?.progress ?? 0;
@@ -151,6 +144,7 @@ export default function HotLocalScreen() {
 
         if (isMounted && data?.rankOne) {
           setWeeklyHotLocalData(data);
+          setIsMockData(false);
           return;
         }
 
@@ -162,6 +156,7 @@ export default function HotLocalScreen() {
 
         console.warn('Hot local API fallback to mock data.', error?.message);
         setWeeklyHotLocalData(hotLocalData);
+        setIsMockData(true);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -242,11 +237,16 @@ export default function HotLocalScreen() {
           <View style={styles.headerText}>
             <Text style={styles.title}>이번 주 핫 로컬 TOP 3</Text>
             <Text style={styles.subtitle}>
-              한국관광공사 API 3개 조합 · 매주 월요일 업데이트 · 다음 업데이트까지{' '}
-              {nextUpdateDays}일 남음
+              한국관광공사 API 기반 · 매주 월요일 업데이트
             </Text>
           </View>
         </View>
+
+        {isMockData && (
+          <View style={styles.mockDataBanner}>
+            <Text style={styles.mockDataBannerText}>현재 샘플 데이터를 표시하고 있어요</Text>
+          </View>
+        )}
 
         {isLoading ? (
           <View style={styles.rankOnePlaceholder}>
@@ -352,6 +352,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 19,
     marginTop: 6,
+  },
+  mockDataBanner: {
+    backgroundColor: '#FFF3CD',
+    borderRadius: 8,
+    marginBottom: 14,
+    padding: 8,
+  },
+  mockDataBannerText: {
+    color: '#856404',
+    fontSize: 12,
+    fontWeight: '700',
   },
   rankOneCard: {
     backgroundColor: CARD,

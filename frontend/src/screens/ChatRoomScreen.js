@@ -238,9 +238,7 @@ export default function ChatRoomScreen() {
       });
       const nextPosts = normalizePostsResponse(data);
 
-      if (nextPosts.length > 0) {
-        setPosts(nextPosts);
-      }
+      setPosts(nextPosts);
     } catch (error) {
       console.warn('Posts API fallback to mock data.', error?.message);
       setPosts((currentPosts) => (currentPosts.length > 0 ? currentPosts : initialPosts));
@@ -401,6 +399,28 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const uploadImage = async (imageUri) => {
+    if (!imageUri) {
+      return null;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'post-image.jpg',
+      });
+
+      const data = await apiClient.post('/api/posts/image', formData);
+      return data?.imageUrl || data?.url || null;
+    } catch (error) {
+      console.error('이미지 업로드 실패:', error);
+      Alert.alert('안내', '이미지 업로드에 실패했어요. 텍스트만 등록할게요.');
+      return null;
+    }
+  };
+
   const handleSend = async () => {
     if (!isResidentVerified) {
       Alert.alert(
@@ -423,13 +443,14 @@ export default function ChatRoomScreen() {
     }
 
     const inputText = message.trim();
+    const uploadedImageUrl = await uploadImage(selectedImageUri);
     const requestBody = {
       title: inputText,
       content: inputText,
       ageTag: selectedAgeTag || '전체',
       categoryTag: selectedCategory || '기타',
       region: regionName,
-      image: selectedImageUri,
+      image: uploadedImageUrl,
     };
     const fallbackPost = {
       id: Date.now(),
@@ -565,14 +586,19 @@ export default function ChatRoomScreen() {
           {isLoadingPosts ? (
             <View style={styles.loadingState}>
               <ActivityIndicator color={MAIN_GREEN} />
+              <Text style={styles.loadingText}>동네 명소를 불러오고 있어요...</Text>
             </View>
           ) : visiblePosts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>📍</Text>
               <Text style={styles.emptyTitle}>
-                {normalizedSearchText ? '검색 결과가 없어요' : '아직 등록된 명소가 없어요'}
+                {normalizedSearchText ? '검색 결과가 없어요' : '아직 공유된 명소가 없어요'}
               </Text>
-              <Text style={styles.emptyDescription}>첫 번째 로컬 명소를 공유해보세요!</Text>
+              <Text style={styles.emptyDescription}>
+                {normalizedSearchText
+                  ? '다른 검색어로 다시 찾아보세요.'
+                  : '우리 동네 숨은 명소를 첫 번째로 공유해보세요!'}
+              </Text>
               <TouchableOpacity
                 style={styles.emptyButton}
                 activeOpacity={0.7}
@@ -940,24 +966,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: CARD,
     borderRadius: 8,
+    gap: 12,
     minHeight: 180,
     justifyContent: 'center',
     padding: 24,
   },
+  loadingText: {
+    color: '#7A9B8A',
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   emptyIcon: {
-    fontSize: 32,
+    fontSize: 44,
   },
   emptyTitle: {
     color: TEXT_PRIMARY,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
     marginTop: 10,
   },
   emptyDescription: {
-    color: TEXT_SECONDARY,
+    color: '#7A9B8A',
     fontSize: 14,
     fontWeight: '700',
+    lineHeight: 20,
     marginTop: 6,
+    textAlign: 'center',
   },
   emptyButton: {
     alignItems: 'center',

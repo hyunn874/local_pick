@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import apiClient from '../api/apiClient';
@@ -290,11 +291,10 @@ export function AuthProvider({ children }) {
     await clearAuthState();
   }, [clearAuthState]);
 
-  const handleUnauthorized = useCallback(async () => {
+  const refreshAccessToken = useCallback(async () => {
     const storedRefreshToken = refreshTokenRef.current;
 
     if (!storedRefreshToken) {
-      await clearAuthState();
       return false;
     }
 
@@ -322,21 +322,26 @@ export function AuthProvider({ children }) {
 
       return true;
     } catch {
-      await clearAuthState();
       return false;
     }
-  }, [clearAuthState, syncTokenRefs]);
+  }, [syncTokenRefs]);
+
+  const handleAuthExpired = useCallback(async () => {
+    await clearAuthState();
+    Alert.alert('로그인 필요', '다시 로그인해주세요.');
+  }, [clearAuthState]);
 
   useEffect(() => {
     apiClient.setAuthHandlers({
       getAccessToken: () => accessTokenRef.current,
-      onUnauthorized: handleUnauthorized,
+      onUnauthorized: refreshAccessToken,
+      onAuthExpired: handleAuthExpired,
     });
 
     return () => {
       apiClient.clearAuthHandlers();
     };
-  }, [handleUnauthorized]);
+  }, [handleAuthExpired, refreshAccessToken]);
 
   const value = useMemo(
     () => ({
