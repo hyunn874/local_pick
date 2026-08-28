@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -156,10 +157,20 @@ export default function ResidentVerificationScreen({ navigation }) {
     setIsCheckingLocation(true);
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
 
-      if (!permission.granted) {
-        Alert.alert('위치 권한이 필요해요', '거주자 인증을 위해 위치 접근을 허용해주세요.');
+      if (status !== 'granted') {
+        Alert.alert(
+          '위치 권한 필요',
+          '거주자 인증을 위해 위치 권한이 필요해요.\n설정에서 위치 권한을 허용해주세요.',
+          [
+            { text: '취소', style: 'cancel' },
+            {
+              text: '설정 열기',
+              onPress: () => Linking.openSettings(),
+            },
+          ],
+        );
         return;
       }
 

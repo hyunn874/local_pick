@@ -22,7 +22,7 @@ import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
-import { generationFilters, recommendedPlaces } from '../mocks/mapMockData';
+import { generationFilters } from '../mocks/mapMockData';
 import { getBalance, setBalance, useBalance } from '../state/localPassStore';
 
 const MAIN_GREEN = '#2D5C44';
@@ -57,30 +57,6 @@ const regionCoordinates = {
   '제주특별자치도': { lat: 33.4996, lng: 126.5312 },
 };
 
-const mapMarkers = [
-  {
-    id: 1,
-    latitude: 36.362,
-    longitude: 127.356,
-    title: '봉명동 숨은 골목 카페',
-    category: '카페',
-  },
-  {
-    id: 2,
-    latitude: 36.345,
-    longitude: 127.378,
-    title: '갑천 노을 산책로',
-    category: '산책',
-  },
-  {
-    id: 3,
-    latitude: 36.368,
-    longitude: 127.389,
-    title: '유성 과학 산책길',
-    category: '산책',
-  },
-];
-
 function resolveRegionCenter(region) {
   if (Number.isFinite(region?.centerLatitude) && Number.isFinite(region?.centerLongitude)) {
     return {
@@ -104,6 +80,10 @@ function resolveRegionCenter(region) {
 function normalizeAdoptedPlace(item, region) {
   const postId = item.postId ?? item.id;
   const placeName = item.placeName || item.name || item.title || '채택 명소';
+  const regionCenter = resolveRegionCenter(region);
+  const latitude = Number(item.latitude);
+  const longitude = Number(item.longitude);
+  const adoptionCount = Number(item.adoptionCount ?? item.likes ?? item.likeCount ?? 0);
 
   return {
     id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
@@ -113,23 +93,14 @@ function normalizeAdoptedPlace(item, region) {
     name: placeName,
     category: item.category || item.categoryTag || '채택 명소',
     generation: item.generation || item.ageTag || item.generationTag || '전체',
-    passCount: item.passCount || `좋아요 ${item.adoptionCount ?? item.likes ?? 0}`,
-    latitude: item.latitude,
-    longitude: item.longitude,
+    passCount: item.passCount || `좋아요 ${adoptionCount}`,
+    latitude: Number.isFinite(latitude) ? latitude : regionCenter.latitude,
+    longitude: Number.isFinite(longitude) ? longitude : regionCenter.longitude,
     region: item.region || item.regionName || region?.fullName || '선택한 지역',
-    likes: Number(item.likes ?? item.likeCount ?? item.adoptionCount ?? 0),
+    likes: adoptionCount,
     adoptedAt: item.adoptedAt,
     imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
   };
-}
-
-function getMockRecommendationsForRegion(region) {
-  const regionName = region?.fullName || '대전 유성구';
-
-  return recommendedPlaces.map((place) => ({
-    ...place,
-    region: regionName,
-  }));
 }
 
 function GenerationFilter({ label, selectedFilter, onPress }) {
@@ -186,21 +157,21 @@ function RecommendationCard({ place, onPress, onAlternativePress }) {
 }
 
 function createSimilarPlaces(place) {
-  const baseName = place.title || place.name;
+  const baseName = place?.title || place?.name || '선택한 명소';
 
   return [
     {
-      id: `${place.id}-alt-1`,
+      id: `${place?.id || 'place'}-alt-1`,
       title: `${baseName} 근처 산책 코스`,
       meta: '도보 8분 · 로컬패스 1개',
     },
     {
-      id: `${place.id}-alt-2`,
-      title: `${place.category} 인기 장소`,
-      meta: `${place.generation} 추천 · 로컬패스 1개`,
+      id: `${place?.id || 'place'}-alt-2`,
+      title: `${place?.category || '명소'} 인기 장소`,
+      meta: `${place?.generation || '전체'} 추천 · 로컬패스 1개`,
     },
     {
-      id: `${place.id}-alt-3`,
+      id: `${place?.id || 'place'}-alt-3`,
       title: '비슷한 분위기의 숨은 명소',
       meta: '주민 추천 · 채택 후보',
     },
@@ -221,7 +192,7 @@ function PlaceBottomSheet({
     <Animated.View style={[styles.bottomSheet, animatedStyle]}>
       <View style={styles.sheetHandle} />
       <View style={styles.sheetHeader}>
-        <Text style={styles.sheetTitle}>{place.name || place.title}</Text>
+        <Text style={styles.sheetTitle}>{place?.name || place?.title}</Text>
         <TouchableOpacity
           style={styles.sheetCloseButton}
           activeOpacity={0.7}
@@ -232,10 +203,10 @@ function PlaceBottomSheet({
       </View>
       <View style={styles.sheetTagRow}>
         <View style={styles.sheetTag}>
-          <Text style={styles.sheetTagText}>{place.category}</Text>
+          <Text style={styles.sheetTagText}>{place?.category}</Text>
         </View>
         <View style={styles.sheetTag}>
-          <Text style={styles.sheetTagText}>{place.generation}</Text>
+          <Text style={styles.sheetTagText}>{place?.generation}</Text>
         </View>
       </View>
       {showAlternatives && (
@@ -279,7 +250,7 @@ export default function MapScreen() {
   const [selectedPin, setSelectedPin] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
-  const [regionRecommendations, setRegionRecommendations] = useState(recommendedPlaces);
+  const [regionRecommendations, setRegionRecommendations] = useState([]);
   useBalance();
   const { regions } = useRegions();
 
@@ -305,34 +276,24 @@ export default function MapScreen() {
   );
 
   const filteredMarkers = useMemo(
-    () => {
-      const sourceMarkers = regionRecommendations.some((place) =>
-        Number.isFinite(place.latitude) && Number.isFinite(place.longitude),
-      )
-        ? regionRecommendations.map((place) => ({
-            ...place,
-            id: place.id,
-            latitude: place.latitude,
-            longitude: place.longitude,
-            title: place.title,
-          }))
-        : mapMarkers.map((marker) => ({
-            ...marker,
-            latitude: selectedRegionCenter.latitude + (marker.latitude - YUSEONG_CENTER.latitude),
-            longitude: selectedRegionCenter.longitude + (marker.longitude - YUSEONG_CENTER.longitude),
-            region: selectedRegion?.fullName,
-          }));
-
-      return sourceMarkers.filter((marker) => {
+    () =>
+      regionRecommendations
+        .map((place) => ({
+          ...place,
+          id: place.id,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          title: place.title,
+        }))
+        .filter((marker) => {
         const matchesSearch =
           !normalizedSearchText ||
           marker.title.toLowerCase().includes(normalizedSearchText) ||
           marker.category.toLowerCase().includes(normalizedSearchText);
 
         return matchesSearch;
-      });
-    },
-    [normalizedSearchText, regionRecommendations, selectedRegion?.fullName, selectedRegionCenter],
+      }),
+    [normalizedSearchText, regionRecommendations],
   );
 
   const hasSearchResults =
@@ -356,7 +317,7 @@ export default function MapScreen() {
 
     async function loadRegionRecommendations() {
       if (!selectedRegion?.regionCode) {
-        setRegionRecommendations(getMockRecommendationsForRegion(selectedRegion));
+        setRegionRecommendations([]);
         return;
       }
 
@@ -373,10 +334,10 @@ export default function MapScreen() {
           setRegionRecommendations(nextRecommendations);
         }
       } catch (error) {
-        console.warn('Map adopted places API fallback to mock data.', error?.message);
+        console.warn('Map adopted places API failed. Clearing markers.', error?.message);
 
         if (isMounted) {
-          setRegionRecommendations(getMockRecommendationsForRegion(selectedRegion));
+          setRegionRecommendations([]);
         }
       }
     }
@@ -465,8 +426,17 @@ export default function MapScreen() {
       return;
     }
 
-    const selectedMarker = selectedPin || {};
-    const selectedPlaceName = selectedMarker.title || selectedMarker.name || '선택한 장소';
+    const selectedMarker = selectedPin;
+
+    if (!selectedMarker) {
+      Alert.alert(
+        '명소를 선택해주세요',
+        '지도에서 명소를 먼저 선택해주세요.',
+      );
+      return;
+    }
+
+    const selectedPlaceName = selectedMarker?.title || selectedMarker?.name || '선택한 장소';
 
     Alert.alert(
       '로컬패스 사용',
@@ -480,21 +450,21 @@ export default function MapScreen() {
             setSelectedPin(null);
             navigation.navigate('PostDetail', {
               post: {
-                id: selectedMarker.id,
-                author: selectedMarker.region || '지역 거주자',
+                id: selectedMarker?.id,
+                author: selectedMarker?.region || '지역 거주자',
                 isResident: true,
                 time: '최근',
                 image: null,
-                ageTag: selectedMarker.ageTag || '전체',
-                categoryTag: selectedMarker.category || '명소',
+                ageTag: selectedMarker?.ageTag || '전체',
+                categoryTag: selectedMarker?.category || '명소',
                 title: selectedPlaceName,
                 content:
-                  selectedMarker.description ||
+                  selectedMarker?.description ||
                   '로컬 거주자가 추천한 명소예요. 직접 방문해서 확인해보세요!',
                 progress: 83,
-                likes: selectedMarker.likes || 24,
+                likes: selectedMarker?.likes || 24,
                 comments: 2,
-                location: selectedMarker.region || '대전 유성구',
+                location: selectedMarker?.region || '대전 유성구',
               },
             });
           },
@@ -566,19 +536,13 @@ export default function MapScreen() {
         </View>
 
         <View style={styles.mapArea}>
-          {filteredMarkers.length > 0 ? (
-            <NaverMapView
-              latitude={selectedRegionCenter.latitude}
-              longitude={selectedRegionCenter.longitude}
-              markers={filteredMarkers}
-              onMarkerPress={handleSelectMarker}
-              style={styles.naverMap}
-            />
-          ) : (
-            <View style={styles.noSearchResults}>
-              <Text style={styles.noSearchResultsText}>검색 결과가 없어요</Text>
-            </View>
-          )}
+          <NaverMapView
+            latitude={selectedRegionCenter.latitude}
+            longitude={selectedRegionCenter.longitude}
+            markers={filteredMarkers}
+            onMarkerPress={handleSelectMarker}
+            style={styles.naverMap}
+          />
         </View>
 
         <View style={styles.recommendationSection}>
