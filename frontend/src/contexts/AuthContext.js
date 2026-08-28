@@ -271,8 +271,6 @@ export function AuthProvider({ children }) {
         generationTag,
       };
 
-      console.log('[온보딩] 요청 데이터:', onboardingPayload);
-      console.log('[온보딩] accessToken 있음:', !!accessTokenRef.current);
       const nextUser = await completeOnboardingApi(onboardingPayload);
       const nextAuthState = {
         accessToken: accessTokenRef.current,

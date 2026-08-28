@@ -188,7 +188,6 @@ export default function PostDetailScreen({ navigation, route }) {
       const data = await apiClient.get(`/api/posts/${initialPost.id}`);
       setPost((currentPost) => normalizePost(data, currentPost));
     } catch (error) {
-      console.warn('Post detail API fallback to route data.', error?.message);
     } finally {
       setIsLoadingPost(false);
     }
@@ -212,7 +211,6 @@ export default function PostDetailScreen({ navigation, route }) {
         setPostCommentCount(post?.id, nextComments.length);
       }
     } catch (error) {
-      console.warn('Comments API fallback to local comments.', error?.message);
     }
   }, [post?.comments, post?.id]);
 
@@ -255,7 +253,6 @@ export default function PostDetailScreen({ navigation, route }) {
       setProgress(nextProgress);
       setPostLikeCount(post?.id, nextLikes, nextIsLiked);
     } catch (error) {
-      console.warn('Post detail like API failed. Keeping local optimistic state.', error?.message);
     }
   };
 
@@ -274,7 +271,6 @@ export default function PostDetailScreen({ navigation, route }) {
             await apiClient.delete(`/api/posts/${post.id}`);
             navigation.goBack();
           } catch (error) {
-            console.warn('Delete post API failed.', error?.message);
             Alert.alert('삭제 실패', '게시글을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.');
           }
         },
@@ -312,7 +308,6 @@ export default function PostDetailScreen({ navigation, route }) {
       setCommentText('');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.warn('Create comment API fallback to local comment.', error?.message);
       setComments((currentComments) => {
         const nextComments = [fallbackComment, ...currentComments];
 

@@ -140,7 +140,6 @@ export default function ResidentVerificationScreen({ navigation }) {
       }));
       setConfirmedCount(Number(status?.verifyCount ?? 0));
     } catch (error) {
-      console.warn('Resident status API fallback to local state.', error?.message);
     } finally {
       setIsLoadingStatus(false);
     }

@@ -391,7 +391,6 @@ export default function MapScreen() {
           setRegionCenterOverride({ latitude, longitude });
         }
       } catch (error) {
-        console.warn('지역 중심 좌표 조회 실패. 기본 좌표를 사용합니다.', error?.message);
       }
     }
 
@@ -413,8 +412,6 @@ export default function MapScreen() {
         return;
       }
 
-      console.log('[지도] regionCode:', regionCode);
-
       try {
         const data = await apiClient.get('/api/places/adopted', {
           params: { regionCode },
@@ -427,8 +424,6 @@ export default function MapScreen() {
           setRegionRecommendations(nextRecommendations);
         }
       } catch (error) {
-        console.warn('Map adopted places API failed. Clearing markers.', error?.message);
-
         if (isMounted) {
           setRegionRecommendations([]);
         }
@@ -443,27 +438,11 @@ export default function MapScreen() {
   }, [selectedRegion]);
 
   useEffect(() => {
-    console.log('[지도] mapRef:', mapRef.current);
-    console.log(
-      '[지도] 이동할 좌표:',
-      selectedRegionCenter.latitude,
-      selectedRegionCenter.longitude,
-      selectedMapZoom,
-    );
-
     const timeoutId = setTimeout(() => {
-      console.log('[지도] mapRef 존재:', !!mapRef.current);
-
       if (!mapRef.current) {
         return;
       }
 
-      console.log('[지도] animateCameraTo 시도:', {
-        latitude: selectedRegionCenter.latitude,
-        longitude: selectedRegionCenter.longitude,
-        zoom: selectedMapZoom,
-        duration: 500,
-      });
       mapRef.current.animateCameraTo({
         latitude: selectedRegionCenter.latitude,
         longitude: selectedRegionCenter.longitude,
@@ -476,11 +455,6 @@ export default function MapScreen() {
   }, [selectedMapZoom, selectedRegionCenter]);
 
   const handleSelectRegion = (region) => {
-    const center = resolveRegionCenter(region);
-
-    console.log('[지도] 지역 선택:', region?.sidoName, region?.sigunguName);
-    console.log('[지도] 이동 좌표:', center.latitude, center.longitude);
-
     setSelectedRegion(region);
     setRegionRecommendations([]);
     setRegionCenterOverride(null);

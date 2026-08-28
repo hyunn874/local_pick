@@ -241,7 +241,6 @@ export default function ChatRoomScreen() {
     }
 
     try {
-      console.log('accessToken:', accessToken ? '있음' : '없음');
       const data = await apiClient.get('/api/posts', {
         params: { region: regionCode },
       });
@@ -249,7 +248,6 @@ export default function ChatRoomScreen() {
 
       setPosts(nextPosts);
     } catch (error) {
-      console.warn('Posts API fallback to mock data.', error?.message);
       setPosts((currentPosts) => (currentPosts.length > 0 ? currentPosts : initialPosts));
     } finally {
       setIsLoadingPosts(false);
@@ -355,7 +353,6 @@ export default function ChatRoomScreen() {
     );
 
     try {
-      console.log('accessToken:', accessToken ? '있음' : '없음');
       const likeData = await apiClient.post(`/api/posts/${postId}/like`);
 
       setPosts((currentPosts) =>
@@ -380,8 +377,6 @@ export default function ChatRoomScreen() {
         }),
       );
     } catch (error) {
-      console.warn('Post like API failed. Keeping local optimistic state.', error?.message);
-
       if (!currentPost) {
         return;
       }
@@ -420,7 +415,6 @@ export default function ChatRoomScreen() {
       );
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.warn('Post adoption API failed.', error?.message);
       Alert.alert('채택 투표 실패', '잠시 후 다시 시도해주세요.');
     }
   };
@@ -524,7 +518,6 @@ export default function ChatRoomScreen() {
     };
 
     try {
-      console.log('accessToken:', accessToken ? '있음' : '없음');
       const data = await apiClient.post('/api/posts', requestBody);
       const newPost = normalizePost(data?.post || data);
 
@@ -535,7 +528,6 @@ export default function ChatRoomScreen() {
       await loadPosts();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.warn('Create post API fallback to local post.', error?.message);
       setPosts((currentPosts) => [fallbackPost, ...currentPosts]);
       writeOngoingPick(fallbackPost);
       setMessage('');

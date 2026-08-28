@@ -193,7 +193,6 @@ function AuthenticatedLocalPassScreen() {
     }
 
     try {
-      console.log('accessToken:', accessToken ? '있음' : '없음');
       const [balanceData, historyData] = await Promise.all([
         apiClient.get('/api/local-pass/balance'),
         apiClient.get('/api/local-pass/history'),
@@ -204,7 +203,6 @@ function AuthenticatedLocalPassScreen() {
       setLocalPassBalance(nextBalance);
       setUsageHistoryItems(nextHistory);
     } catch (error) {
-      console.warn('Local pass API fallback to mock data.', error?.message);
       setUsageHistoryItems((currentItems) => (currentItems.length > 0 ? currentItems : usageHistory));
     } finally {
       setIsLoadingPassData(false);
@@ -260,7 +258,6 @@ function AuthenticatedLocalPassScreen() {
           text: '사용하기',
           onPress: async () => {
             try {
-              console.log('accessToken:', accessToken ? '있음' : '없음');
               const data = await apiClient.post('/api/local-pass/use', {
                 postId: place.id,
                 placeName: place.name,
@@ -281,7 +278,6 @@ function AuthenticatedLocalPassScreen() {
 
               Alert.alert('열람 완료', '로컬패스 1개가 차감됐어요.');
             } catch (error) {
-              console.warn('Use local pass API fallback to local state.', error?.message);
               setLocalPassBalance(getBalance() - 1);
               setIsPlaceModalVisible(false);
               setUsageHistoryItems((currentItems) => [

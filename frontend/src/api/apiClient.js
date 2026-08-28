@@ -137,8 +137,6 @@ export async function requestApi(path, options = {}) {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const accessToken = skipAuth ? null : authHandlers.getAccessToken?.();
     const token = accessToken;
-    console.log('[API] endpoint:', endpoint);
-    console.log('[API] token 있음:', !!token);
     const requestHeaders = {
       Accept: 'application/json',
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),

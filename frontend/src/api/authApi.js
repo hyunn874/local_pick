@@ -40,12 +40,6 @@ export function refreshTokens(refreshToken) {
 }
 
 export async function completeOnboarding({ nickname, generationTag }) {
-  console.log('[온보딩] endpoint:', '/api/users/me/onboarding');
-  console.log('[온보딩] 요청 데이터:', {
-    nickname,
-    generationTag,
-  });
-
   try {
     const data = await apiClient.post('/api/users/me/onboarding', {
       nickname,
