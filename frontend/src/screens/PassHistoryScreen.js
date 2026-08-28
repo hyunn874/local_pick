@@ -14,11 +14,13 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 
 function normalizeHistoryItem(item) {
+  const amount = Number(item.amount ?? 0);
+
   return {
-    id: item.id ?? item.historyId ?? `${item.placeId || item.placeName}-${item.usedAt || Date.now()}`,
-    place: item.place || `${item.region || ''}${item.region ? '·' : ''}${item.placeName || '사용처'}`,
+    id: item.id ?? item.historyId ?? `${item.referenceId || item.placeId || item.placeName}-${item.createdAt || Date.now()}`,
+    place: item.place || item.placeName || item.reasonLabel || '로컬패스 내역',
     date: item.date || item.usedAt || item.createdAt || '방금 전',
-    amount: item.amount ? `${item.amount > 0 ? '+' : ''}${item.amount}개` : '-1개',
+    amount: `${amount > 0 ? '+' : ''}${amount}개`,
   };
 }
 

@@ -45,11 +45,12 @@ function normalizePost(post) {
 
   return {
     id: post.id ?? post.postId,
-    author: post.author?.nickname || post.authorName || post.author || '로컬픽 사용자',
-    isResident: Boolean(post.isResident ?? post.author?.isResidentVerified),
+    author: post.author?.nickname || post.authorNickname || post.authorName || post.author || '로컬픽 사용자',
+    authorId: post.authorId,
+    isResident: Boolean(post.isResident ?? post.writtenByResident ?? post.author?.isResidentVerified),
     time: post.time || post.createdAt || '방금 전',
-    image: post.image || post.imageUrl,
-    imageUrl: post.imageUrl || post.image,
+    image: post.image || post.imageUrl || post.imageUrls?.[0],
+    imageUrl: post.imageUrl || post.image || post.imageUrls?.[0],
     ageTag: post.ageTag || post.generationTag || '전체',
     generationTag: post.generationTag || post.ageTag || '전체',
     categoryTag: post.categoryTag || post.category || '기타',
@@ -58,6 +59,10 @@ function normalizePost(post) {
     progress: Number(post.progress ?? Math.min(100, Math.round((likes / targetLikes) * 100))),
     likes,
     comments: Number(post.comments ?? post.commentCount ?? 0),
+    adoptionCount: Number(post.adoptionCount ?? 0),
+    isAdopted: Boolean(post.isAdopted ?? post.adopted),
+    regionCode: post.regionCode,
+    regionName: post.regionName,
     targetLikes,
     isMine: Boolean(post.isMine ?? post.mine),
     isLiked: Boolean(post.isLiked ?? post.likedByMe),
@@ -118,7 +123,7 @@ function writeOngoingPick(post) {
   });
 }
 
-function PostCard({ post, onPress, onShare, onToggleLike }) {
+function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
   const imageSource = post.imageUrl || post.image;
   const generationTag = post.generationTag || post.ageTag || '전체';
   const isLiked = post.likedByMe ?? post.isLiked;
@@ -185,6 +190,9 @@ function PostCard({ post, onPress, onShare, onToggleLike }) {
         <TouchableOpacity activeOpacity={0.7} onPress={onShare}>
           <Text style={styles.shareIcon}>↗</Text>
         </TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.7} onPress={onAdopt}>
+          <Text style={styles.actionText}>{post.isAdopted ? '채택됨' : '채택하기'}</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -206,6 +214,7 @@ export default function ChatRoomScreen() {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
   const regionName = getResidenceName(user);
+  const regionCode = user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
   const residentBadgeInfo = getResidentBadgeInfo(user);
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
@@ -234,7 +243,7 @@ export default function ChatRoomScreen() {
     try {
       console.log('accessToken:', accessToken ? '있음' : '없음');
       const data = await apiClient.get('/api/posts', {
-        params: { region: regionName },
+        params: { region: regionCode },
       });
       const nextPosts = normalizePostsResponse(data);
 
@@ -246,7 +255,7 @@ export default function ChatRoomScreen() {
       setIsLoadingPosts(false);
       setRefreshing(false);
     }
-  }, [accessToken, regionName]);
+  }, [accessToken, regionCode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -355,8 +364,8 @@ export default function ChatRoomScreen() {
             return post;
           }
 
-          const nextLikes = Number(likeData?.likes ?? likeData?.likeCount ?? post.likes);
-          const nextLiked = Boolean(likeData?.isLiked ?? likeData?.likedByMe ?? post.isLiked);
+          const nextLikes = Number(likeData?.likeCount ?? likeData?.likes ?? post.likes);
+          const nextLiked = Boolean(likeData?.liked ?? likeData?.isLiked ?? likeData?.likedByMe ?? post.isLiked);
 
           return {
             ...post,
@@ -376,6 +385,43 @@ export default function ChatRoomScreen() {
       if (!currentPost) {
         return;
       }
+    }
+  };
+
+  const handleAdopt = async (post) => {
+    if (!isResidentVerified) {
+      Alert.alert(
+        '거주자 인증이 필요해요',
+        '채택 투표는 거주자 인증 후 참여할 수 있어요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '인증하기', onPress: () => navigation.navigate('ResidentVerification') },
+        ],
+      );
+      return;
+    }
+
+    if (!post?.id || post.isAdopted) {
+      return;
+    }
+
+    try {
+      const data = await apiClient.post(`/api/posts/${post.id}/adopt`);
+      setPosts((currentPosts) =>
+        currentPosts.map((currentPost) =>
+          currentPost.id === post.id
+            ? {
+                ...currentPost,
+                adoptionCount: Number(data?.adoptionCount ?? currentPost.adoptionCount + 1),
+                isAdopted: Boolean(data?.adopted ?? data?.isAdopted ?? currentPost.isAdopted),
+              }
+            : currentPost,
+        ),
+      );
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('Post adoption API failed.', error?.message);
+      Alert.alert('채택 투표 실패', '잠시 후 다시 시도해주세요.');
     }
   };
 
@@ -442,15 +488,19 @@ export default function ChatRoomScreen() {
       return;
     }
 
+    if (!regionCode) {
+      Alert.alert('지역 정보가 필요해요', '거주 지역을 먼저 설정해주세요.');
+      return;
+    }
+
     const inputText = message.trim();
     const uploadedImageUrl = await uploadImage(selectedImageUri);
     const requestBody = {
       title: inputText,
       content: inputText,
       ageTag: selectedAgeTag || '전체',
-      categoryTag: selectedCategory || '기타',
-      region: regionName,
-      image: uploadedImageUrl,
+      regionCode,
+      imageUrl: uploadedImageUrl,
     };
     const fallbackPost = {
       id: Date.now(),
@@ -615,6 +665,7 @@ export default function ChatRoomScreen() {
                 onPress={() => handlePostPress(post)}
                 onShare={() => handleShare(post)}
                 onToggleLike={() => handleToggleLike(post.id)}
+                onAdopt={() => handleAdopt(post)}
               />
             ))
           )}
