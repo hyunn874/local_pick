@@ -62,7 +62,7 @@
 | --- | --- |
 | `RootTabNavigator.js` | AuthGate 분기, 게스트 제한 탭 처리, SettingsRoute guard |
 | `LoginScreen` | 카카오/Apple/개발용 로그인, 게스트 모드 시작 |
-| `OnboardingScreen` | 온보딩 완료, 로그아웃 |
+| `OnboardingScreen` | 3단계 온보딩 완료, 인증 상태 표시, `ResidentVerification` 이동 |
 | `MainScreen` | 사용자 지역 표시, 게스트 배너, 로그인 유도 |
 | `MapScreen` | 게스트 여부, 사용자 지역 기반 초기 선택, 로컬패스 사용 시 로그인 유도 |
 | `ChatRoomScreen` | accessToken 로그, 사용자 지역/닉네임/거주자 상태 |
@@ -100,7 +100,7 @@
 | `getBalance()` | 현재 `balance`를 반환한다. |
 | `setBalance(newBalance)` | 음수가 되지 않도록 보정한 뒤 `balance`를 갱신하고 listener에 알린다. |
 | `useBalance(initialBalance)` | balance state와 setter를 반환하고 mount/unmount에 따라 listener를 등록/해제한다. |
-| `syncBalanceFromServer(token)` | accessToken이 있으면 `GET /api/local-pass/balance`를 호출하고 `data.data.balance`를 `setBalance`에 반영한다. 실패 시 console error만 남긴다. |
+| `syncBalanceFromServer(token)` | accessToken이 있으면 `GET /api/local-pass/balance`를 호출하고 응답 `data.balance`를 `setBalance`에 반영한다. 로그인 적용 시와 `LocalPassScreen` 진입 시 호출하며, 실패 시 console error만 남긴다. |
 
 ### 사용하는 화면/모듈
 
@@ -206,7 +206,7 @@
 ## 상태 관리 특성 및 주의점
 
 - `state/`의 모듈 전역 상태들은 앱 프로세스 메모리에만 존재한다. 앱 재시작, 번들 reload, 프로세스 종료 후에는 유지되지 않는다.
-- `localPassStore`는 앱 재시작 후 로그인 성공 시 서버 잔액 동기화를 시도하지만, 서버 API 명세는 현재 `docs/api-endpoints.md`에 별도 기재되어 있지 않다.
+- `localPassStore`는 로그인 적용 시와 `LocalPassScreen` 진입 시 서버 잔액을 동기화한다. 앱 재시작 직후에는 저장된 인증 상태를 복원한 뒤 로컬패스 화면 진입 시 다시 동기화한다.
 - `postLikeCounts`, `postCommentCounts`, `myPostProgress`에는 구독 기능이 없다. 화면 focus 또는 직접 읽기 시점에만 반영된다.
 - `localPassStore`만 listener 기반 구독을 제공한다.
 - `AuthContext`만 SecureStore에 저장되어 앱 재시작 후 복원된다.

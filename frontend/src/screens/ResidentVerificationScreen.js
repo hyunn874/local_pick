@@ -388,7 +388,7 @@ export default function ResidentVerificationScreen({ navigation }) {
                 style={styles.input}
                 value={regionInput}
                 onChangeText={setRegionInput}
-                placeholder="예: 서울 은평구"
+                placeholder="서울특별시 은평구"
                 placeholderTextColor="#9B9F98"
                 returnKeyType="next"
                 onSubmitEditing={handleNext}

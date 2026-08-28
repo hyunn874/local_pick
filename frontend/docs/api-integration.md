@@ -23,11 +23,14 @@
 | `GET /api/posts/{postId}/comments` | `src/screens/PostDetailScreen.js` | 게시글 상세 댓글 | 댓글 목록을 화면 상태에 반영 | 명세 있음 |
 | `POST /api/posts/{postId}/comments` | `src/screens/PostDetailScreen.js` | 게시글 상세 댓글 작성 | 서버 댓글을 목록 상단에 추가하고 댓글 수 상태 갱신 | 명세 있음 |
 | `POST /api/posts/{postId}/like` | `src/screens/ChatRoomScreen.js`, `src/screens/PostDetailScreen.js` | 소통방, 게시글 상세 좋아요 | 낙관적 업데이트 후 서버의 `liked`, `likeCount` 값으로 보정 | 명세 있음 |
-| `GET /api/local-pass/balance` | `src/state/localPassStore.js`, `src/screens/LocalPassScreen.js` | 로그인 후 잔액 동기화, 로컬패스 화면 | 잔액을 `localPassStore`와 화면 상태에 반영 | 프론트 호출 있음, 명세 없음 |
-| `GET /api/local-pass/history` | `src/screens/LocalPassScreen.js`, `src/screens/PassHistoryScreen.js` | 로컬패스 화면, 사용 내역 화면 | 사용 내역을 정규화해 목록으로 표시 | 프론트 호출 있음, 명세 없음 |
-| `POST /api/local-pass/use` | `src/screens/LocalPassScreen.js` | 로컬패스 사용 | 성공 시 잔액 차감, 사용 내역 추가 | 프론트 호출 있음, 명세 없음 |
-| `GET /api/posts?region=` | `src/screens/ChatRoomScreen.js` | 소통방 게시글 목록 | 지역 게시글을 정규화해 목록으로 표시 | 프론트 호출 있음, 명세 없음 |
-| `POST /api/posts` | `src/screens/ChatRoomScreen.js` | 소통방 게시글 작성 | 생성된 게시글을 목록 상단에 추가 | 프론트 호출 있음, 명세 없음 |
+| `GET /api/local-pass/balance` | `src/state/localPassStore.js`, `src/screens/LocalPassScreen.js` | 로그인 후 잔액 동기화, 로컬패스 화면 | 잔액을 `localPassStore`와 화면 상태에 반영 | 명세 있음 |
+| `GET /api/local-pass/history` | `src/screens/LocalPassScreen.js`, `src/screens/PassHistoryScreen.js` | 로컬패스 화면, 사용 내역 화면 | 사용 내역을 정규화해 목록으로 표시 | 명세 있음 |
+| `POST /api/local-pass/use` | `src/screens/LocalPassScreen.js` | 로컬패스 사용 | 성공 시 서버 잔액/이력으로 화면 상태 갱신 | 명세 있음 |
+| `GET /api/posts?region=` | `src/screens/ChatRoomScreen.js` | 소통방 게시글 목록 | `user.regionCode`를 기준으로 지역 게시글을 정규화해 표시 | 명세 있음 |
+| `POST /api/posts` | `src/screens/ChatRoomScreen.js` | 소통방 게시글 작성 | 생성 게시글을 목록에 추가하고 서버 목록을 재조회 | 명세 있음 |
+| `POST /api/posts/{postId}/adopt` | `src/screens/ChatRoomScreen.js` | 채택 투표 | 거주자 인증 사용자만 투표하고 채택 상태를 갱신 | 명세 있음 |
+| `GET /api/posts/{postId}` | `src/screens/PostDetailScreen.js` | 게시글 상세 | route 데이터로 초기 표시 후 서버 상세 데이터로 갱신 | 명세 있음 |
+| `DELETE /api/posts/{postId}` | `src/screens/PostDetailScreen.js` | 본인 게시글 삭제 | 삭제 성공 후 이전 화면으로 이동 | 명세 있음 |
 | `GET /api/ping` | `src/api/devApi.js` | 개발용 API 래퍼 | ping 결과 반환 | 명세 있음, 현재 연결 화면 없음 |
 | Kakao Local `coord2regioncode` | `src/api/kakaoApi.js`, `src/screens/ResidentVerificationScreen.js` | GPS 기반 행정구역 조회 | 좌표를 시도/시군구 이름으로 변환해 거주자 인증 요청에 사용 | 외부 API |
 | 한국관광공사 `areaBasedList2`, `locationBasedList2` | `src/api/tourismApi.js` | 관광지 API 래퍼 | 관광지 목록 응답 반환 | 외부 API, 현재 연결 화면 없음 |
@@ -40,14 +43,14 @@
 | `GET /api/places/adopted?regionCode=` | `AdoptedPlacesScreen` | 화면 내부 `adoptedPlaceItems` | API 실패 안내와 재시도 버튼 표시, 기존 mock 데이터 유지 | 명세는 있으나 실패 시 빈 화면 방지 |
 | `GET /api/places/adopted?regionCode=` | `AllRecommendScreen` | `src/mocks/mapMockData.js`의 `recommendedPlaces` | API 실패 안내와 재시도 버튼 표시, mock 추천 목록으로 대체 | 명세는 있으나 실패 시 지역 추천 화면 유지 |
 | `GET /api/places/adopted?regionCode=` | `MapScreen` | 없음 | API 실패 시 마커와 하단 추천을 비움 | mock 마커 혼동 방지를 위해 폴백 제거됨 |
-| `GET /api/posts?region=` | `ChatRoomScreen` | `src/mocks/chatRoomMockData.js`의 `initialPosts` | API 실패 시 mock 게시글 목록 표시 | 게시글 목록 API가 명세에 없음 |
-| `POST /api/posts` | `ChatRoomScreen` | 입력값 기반 로컬 게시글 객체 | API 실패 시 로컬 게시글을 목록에 추가 | 게시글 작성 API가 명세에 없음 |
+| `GET /api/posts?region=` | `ChatRoomScreen` | `src/mocks/chatRoomMockData.js`의 `initialPosts` | API 실패 시 mock 게시글 목록 표시 | 네트워크/API 실패 시 소통방을 유지하기 위한 폴백 |
+| `POST /api/posts` | `ChatRoomScreen` | 입력값 기반 로컬 게시글 객체 | API 실패 시 로컬 게시글을 목록에 추가 | 작성 실패 시 입력 결과를 잃지 않기 위한 폴백 |
 | `POST /api/posts/{postId}/like` | `ChatRoomScreen`, `PostDetailScreen` | `postLikeCounts` 전역 상태와 화면 내 낙관적 값 | API 실패 시 사용자에게 안내하고 로컬 상태를 유지/복구 | 좋아요 UX 지연 방지 |
 | `GET /api/posts/{postId}/comments` | `PostDetailScreen` | 화면 내부 `INITIAL_COMMENTS`, `createInitialComments` | API 실패 시 초기 댓글 목록 유지 | 명세는 있으나 실패 시 상세 화면 유지 |
 | `POST /api/posts/{postId}/comments` | `PostDetailScreen` | 입력값 기반 로컬 댓글 객체 | API 실패 시 로컬 댓글을 목록에 추가 | 댓글 작성 실패 시 UX 유지 |
-| `GET /api/local-pass/balance` | `LocalPassScreen`, `localPassStore` | `localPassSummary.currentBalance`, 기존 store 값 | API 실패 시 기존 잔액/초기값 유지 | 로컬패스 API가 명세에 없음 |
-| `GET /api/local-pass/history` | `LocalPassScreen`, `PassHistoryScreen` | `src/mocks/localPassMockData.js`의 `usageHistory` | API 실패 안내와 함께 mock 사용 내역 유지 | 로컬패스 내역 API가 명세에 없음 |
-| `POST /api/local-pass/use` | `LocalPassScreen` | 로컬 차감 및 로컬 사용 내역 객체 | API 실패 시 로컬 사용 처리로 대체 | 로컬패스 사용 API가 명세에 없음 |
+| `GET /api/local-pass/balance` | `LocalPassScreen`, `localPassStore` | `localPassSummary.currentBalance`, 기존 store 값 | API 실패 시 기존 잔액/초기값 유지 | 네트워크/API 실패 시 마지막 잔액을 유지하기 위한 폴백 |
+| `GET /api/local-pass/history` | `LocalPassScreen`, `PassHistoryScreen` | `src/mocks/localPassMockData.js`의 `usageHistory` | API 실패 안내와 함께 mock 사용 내역 유지 | 네트워크/API 실패 시 내역 화면을 유지하기 위한 폴백 |
+| `POST /api/local-pass/use` | `LocalPassScreen` | 로컬 차감 및 로컬 사용 내역 객체 | API 실패 시 로컬 사용 처리로 대체 | 사용 결과를 즉시 표시하기 위한 임시 폴백 |
 | `GET /api/regions` | `MainScreen`, `RegionSelector` | `src/mocks/mainMockData.js`의 `candidateRegions`, `statusItems` 일부 | 지역 API 실패 시 후보 지역/상태 일부를 mock 기준으로 표시 | 지역 API 실패 시 홈 화면 빈 영역 방지 |
 
 ## 3. 미연동 API 목록
@@ -55,7 +58,7 @@
 | API | 현재 프론트 상태 | 필요한 화면/기능 | 비고 |
 | --- | --- | --- | --- |
 | `GET /api/auth/kakao/callback?code=` | 프론트 직접 호출 없음 | 없음 | 서버 내부 콜백 성격이라 앱 직접 연동 대상이 아님 |
-| `GET /api/regions/{regionCode}` | `regionApi.fetchRegionByCode` 래퍼만 있고 화면 사용 없음 | 지역 상세, 지도 지역 상세, 채택 명소 상세 필터 | 필요 시 지역 코드 검증/상세 화면에서 사용 가능 |
+| `GET /api/regions/{regionCode}` | `src/api/regionApi.js`, `src/screens/MapScreen.js` | 지도 지역 중심 좌표 확인 | 선택 지역의 API 좌표가 없을 때 상세 조회 후 프론트 좌표 테이블로 폴백 |
 | `GET /api/regions/search?sido=&sigungu=` | `regionApi.searchRegionByName` 래퍼만 있고 화면 사용 없음 | 거주자 인증, 지역 선택 검색 | 현재 거주자 인증은 Kakao 좌표 변환 후 바로 인증 API 호출 |
 | `GET /api/predictions?week=&limit=` | 화면 사용 없음 | 핫로컬 전체 랭킹, 과거 주차 랭킹 | `HotLocalScreen`은 featured API만 사용 |
 | `GET /api/dev/visitors` | `predictionApi`, `devApi` 래퍼만 있음 | 없음 | `DevScreen` 제거 후 사용자 화면 연결 없음, 명세에도 없음 |
@@ -75,10 +78,9 @@
 
 | 우선순위 | 대상 | 필요한 이유 | 관련 화면 |
 | --- | --- | --- | --- |
-| 1 | 게시글 목록/작성 API 명세화 및 구현: `GET /api/posts`, `POST /api/posts` | 소통방의 핵심 기능인데 현재 명세에 없고 mock 폴백 의존도가 높다 | `ChatRoomScreen`, `PostDetailScreen` |
-| 2 | 로컬패스 API 명세화 및 구현: `GET /api/local-pass/balance`, `GET /api/local-pass/history`, `POST /api/local-pass/use` | 잔액, 내역, 사용 처리가 보상/결제성 데이터라 서버 기준 정합성이 중요하다 | `LocalPassScreen`, `PassHistoryScreen`, `AuthContext`, `localPassStore` |
-| 3 | 알림 API 추가 | 현재 알림은 완전 mock이며 읽음 상태도 앱 재시작 후 유지되지 않는다 | `NotificationScreen`, `MainScreen` 알림 진입 |
-| 4 | 채택 명소 응답 필드 확정 | 지도 마커, 리스트, 상세 이동에서 `id`, `title`, `latitude`, `longitude`, `category`, 세대/본문 필드가 안정적으로 필요하다 | `MapScreen`, `AdoptedPlacesScreen`, `AllRecommendScreen`, `PostDetailScreen` |
-| 5 | 핫로컬 전체 랭킹 API 연동: `GET /api/predictions` | featured 외 전체/과거 주차 랭킹 확장이 필요하다 | `HotLocalScreen` |
-| 6 | 지역 단건/검색 API 실제 사용 연결 | 지역 코드 검증과 검색 UX를 서버 기준으로 통일할 수 있다 | `RegionSelector`, `ResidentVerificationScreen`, `MapScreen` |
-| 7 | 개발용/외부 API 정리 | `devApi`, `tourismApi`, 중복 region API 래퍼처럼 연결 화면이 없는 API를 정리하거나 목적을 확정해야 한다 | 개발 도구, 향후 관광지 추천 |
+| 1 | 알림 API 및 읽음 상태 영속화 | 현재 알림 3건이 완전 mock이고 앱 재시작 후 상태가 사라진다 | `NotificationScreen`, `MainScreen` |
+| 2 | 지도 지역 상세 좌표 서버 보완 | 일부 지역 API 응답에 중심 좌표가 없어 프론트 정적 좌표 테이블에 의존한다 | `MapScreen`, 지역 API |
+| 3 | 로컬패스 사용 결과 정합성 검증 | 잔액·이력은 보상성 데이터라 서버 결과와 로컬 폴백의 불일치를 방지해야 한다 | `LocalPassScreen`, `PassHistoryScreen`, `localPassStore` |
+| 4 | 핫로컬 전체/과거 주차 API 연결 | 현재 화면은 featured API만 사용하고 전체 랭킹 API는 미사용이다 | `HotLocalScreen` |
+| 5 | 지역 검색 API 활용 | 인증 및 지역 선택 입력을 서버 지역 목록과 일관되게 검증할 수 있다 | `ResidentVerificationScreen`, `RegionSelector` |
+| 6 | 미사용 API 래퍼 정리 | 연결 화면 없는 `devApi`, `tourismApi`, 일부 region 래퍼의 운영 목적을 확정해야 한다 | API 모듈 |
