@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
@@ -30,8 +29,7 @@ const GENERATION_OPTIONS = [
 ];
 
 export default function OnboardingScreen() {
-  const { completeOnboarding, user } = useAuth();
-  const navigation = useNavigation();
+  const { completeOnboarding } = useAuth();
   const { width } = useWindowDimensions();
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState('');
@@ -44,10 +42,6 @@ export default function OnboardingScreen() {
 
   const trimmedNickname = useMemo(() => nickname.trim(), [nickname]);
   const isNicknameFormatValid = NICKNAME_PATTERN.test(trimmedNickname);
-  const isResidentVerified = Boolean(
-    user?.isResidentVerified || user?.badgeStatus === 'active',
-  );
-
   useEffect(() => {
     if (!trimmedNickname) {
       setNicknameStatus('idle');
@@ -131,7 +125,7 @@ export default function OnboardingScreen() {
       Alert.alert('세대를 선택해주세요', '추천을 위해 세대를 선택해주세요.');
       return;
     }
-    moveToStep(3);
+    handleComplete();
   };
 
   const handleComplete = async () => {
@@ -149,7 +143,7 @@ export default function OnboardingScreen() {
     }
   };
 
-  const progress = `${Math.round((step / 3) * 100)}%`;
+  const progress = `${Math.round((step / 2) * 100)}%`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -158,7 +152,7 @@ export default function OnboardingScreen() {
         style={styles.container}
       >
         <View style={styles.progressHeader}>
-          <Text style={styles.stepCounter}>{step}/3</Text>
+          <Text style={styles.stepCounter}>{step}/2</Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: progress }]} />
           </View>
@@ -231,23 +225,6 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {step === 3 && (
-            <View style={styles.stepContent}>
-              <Text style={styles.title}>거주지를 인증할까요?</Text>
-              <Text style={styles.subtitle}>인증하면 소통방에서 바로 글을 쓸 수 있어요</Text>
-              <View style={styles.infoCard}>
-                <Text style={styles.infoRow}>📍  GPS로 현재 위치 확인</Text>
-                <Text style={styles.infoRow}>✓  처음 2회는 1주 간격으로 인증</Text>
-                <Text style={styles.infoRow}>✓  이후 매월 1회 유지</Text>
-              </View>
-              {isResidentVerified && (
-                <View style={styles.completedMessage}>
-                  <Ionicons name="checkmark-circle" size={20} color={MAIN_GREEN} />
-                  <Text style={styles.completedMessageText}>거주자 인증이 완료됐어요.</Text>
-                </View>
-              )}
-            </View>
-          )}
         </Animated.View>
 
         <View style={styles.footer}>
@@ -262,7 +239,7 @@ export default function OnboardingScreen() {
             </Pressable>
           )}
 
-          {step < 3 ? (
+          {step < 2 ? (
             <Pressable
               accessibilityRole="button"
               disabled={isTransitioning}
@@ -273,32 +250,21 @@ export default function OnboardingScreen() {
               ]}
               onPress={handleNext}
             >
-              <Text style={styles.primaryButtonText}>다음</Text>
+              <Text style={styles.primaryButtonText}>{step === 1 ? '다음' : '완료'}</Text>
             </Pressable>
           ) : (
-            <>
-              {!isResidentVerified && (
-                <Pressable
-                  accessibilityRole="button"
-                  style={styles.primaryButton}
-                  onPress={() => navigation.navigate('ResidentVerification')}
-                >
-                  <Text style={styles.primaryButtonText}>지금 인증하기</Text>
-                </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting || !selectedGeneration}
+              style={[styles.primaryButton, !selectedGeneration && styles.disabledButton]}
+              onPress={handleComplete}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.primaryButtonText}>완료</Text>
               )}
-              <Pressable
-                accessibilityRole="button"
-                disabled={isSubmitting}
-                style={styles.laterButton}
-                onPress={handleComplete}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#9E9E9E" />
-                ) : (
-                  <Text style={styles.laterButtonText}>나중에 할게요</Text>
-                )}
-              </Pressable>
-            </>
+            </Pressable>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -351,10 +317,6 @@ const styles = StyleSheet.create({
   generationEmoji: { fontSize: 24, marginRight: 14 },
   generationText: { color: '#424242', flex: 1, fontSize: 16, fontWeight: '600' },
   selectedGenerationText: { color: MAIN_GREEN, fontWeight: '700' },
-  infoCard: { backgroundColor: '#F0F7F4', borderRadius: 20, marginTop: 36, padding: 20 },
-  infoRow: { color: '#3F5F4D', fontSize: 14, lineHeight: 22, marginVertical: 4 },
-  completedMessage: { alignItems: 'center', flexDirection: 'row', marginTop: 18 },
-  completedMessageText: { color: MAIN_GREEN, fontSize: 14, fontWeight: '700', marginLeft: 8 },
   footer: { paddingBottom: 24 },
   primaryButton: {
     alignItems: 'center',
@@ -368,6 +330,4 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   previousButton: { alignItems: 'center', height: 44, justifyContent: 'center', marginBottom: 4 },
   previousButtonText: { color: '#9E9E9E', fontSize: 15, fontWeight: '600' },
-  laterButton: { alignItems: 'center', height: 48, justifyContent: 'center', marginTop: 12 },
-  laterButtonText: { color: '#9E9E9E', fontSize: 15 },
 });

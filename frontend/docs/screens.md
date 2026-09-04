@@ -43,7 +43,7 @@
 | 화면 | Route | 진입 조건 | 이동 가능 화면 | 주요 기능 |
 | --- | --- | --- | --- | --- |
 | `LoginScreen` | AuthGate 내부 | 비로그인이고 게스트 모드가 아닐 때 표시 | `Terms`, `PrivacyPolicy`, AuthGate 재분기 | 카카오 로그인, Apple 로그인(iOS), 게스트 모드 시작, `__DEV__` 개발용 로그인 |
-| `OnboardingScreen` | AuthGate 내부 | 로그인 후 `isOnboarded === false` | `ResidentVerification`, 온보딩 완료 후 AuthGate 재분기 | 3단계 온보딩(닉네임, 세대, 거주자 인증), 닉네임 중복 확인, 슬라이드 전환, 인증 건너뛰기 |
+| `OnboardingScreen` | AuthGate 내부 | 로그인 후 `isOnboarded === false` | 온보딩 완료 후 AuthGate 재분기 | 2단계 온보딩(닉네임, 세대), 닉네임 중복 확인, 슬라이드 전환 |
 | `MainScreen` | `Main` tab | 로그인 사용자 또는 게스트 | `HotLocalScreen`, `AdoptedPlaces`, `Notification`, `ChatRoom` | 홈 대시보드, 이 주의 발굴 지역, 다음 후보 지역, 채택 명소 요약, 활성 지역 수 표시, 게스트 로그인 배너 |
 | `MapScreen` | `Map` tab | 로그인 사용자 또는 게스트 | `AllRecommend`, `PostDetail` | 지역 선택, 지도 중심 이동, 지도 마커, 검색, 세대 필터, 선택 지역 기준 채택 명소/추천, 유사 대안, 로컬패스 사용 |
 | `ChatRoomScreen` | `ChatRoom` tab | 로그인 필요. 탭바에서 게스트 접근 차단 | `PostDetail`, `ResidentVerification`, OS 공유 시트 | 지역 소통방 피드, 게시글 목록 조회, 검색, 이미지 첨부/업로드, 글 작성, 좋아요, 채택 투표, 게시글 공유, 거주자 인증 유도 |
@@ -76,7 +76,7 @@
 | 출발 화면 | 이동 대상 |
 | --- | --- |
 | `LoginScreen` | `Terms`, `PrivacyPolicy` |
-| `OnboardingScreen` | `ResidentVerification` 또는 온보딩 완료 후 AuthGate가 `MainTabs`로 재분기 |
+| `OnboardingScreen` | 온보딩 완료 후 AuthGate가 `MainTabs`로 재분기 |
 | `MainScreen` | `HotLocalScreen`, `AdoptedPlaces`, `Notification`, `ChatRoom` |
 | `MapScreen` | `AllRecommend` with `{ region: selectedRegion }`, `PostDetail` |
 | `ChatRoomScreen` | `PostDetail`, `ResidentVerification`, OS 공유 시트 |

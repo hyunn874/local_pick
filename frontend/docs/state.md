@@ -62,7 +62,7 @@
 | --- | --- |
 | `RootTabNavigator.js` | AuthGate 분기, 게스트 제한 탭 처리, SettingsRoute guard |
 | `LoginScreen` | 카카오/Apple/개발용 로그인, 게스트 모드 시작 |
-| `OnboardingScreen` | 3단계 온보딩 완료, 인증 상태 표시, `ResidentVerification` 이동 |
+| `OnboardingScreen` | 2단계(닉네임/세대) 온보딩 완료 |
 | `MainScreen` | 사용자 지역 표시, 게스트 배너, 로그인 유도 |
 | `MapScreen` | 게스트 여부, 사용자 지역 기반 초기 선택, 로컬패스 사용 시 로그인 유도 |
 | `ChatRoomScreen` | accessToken 로그, 사용자 지역/닉네임/거주자 상태 |
