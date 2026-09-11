@@ -175,7 +175,6 @@ export default function AdoptedPlacesScreen({ navigation }) {
 
       const data = await apiClient.get('/api/places/adopted', {
         params: { regionCode },
-        skipAuth: true,
       });
       const nextPlaces = Array.isArray(data)
         ? data.map((item) => normalizeAdoptedPlace(item, regionName))

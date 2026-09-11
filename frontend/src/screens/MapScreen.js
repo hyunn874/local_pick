@@ -136,6 +136,10 @@ function normalizeAdoptedPlace(item, region) {
   };
 }
 
+function getUserRegionCode(user) {
+  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+}
+
 function GenerationFilter({ label, selectedFilter, onPress }) {
   const isSelected = selectedFilter === label;
 
@@ -287,6 +291,7 @@ export default function MapScreen() {
   const [attractionError, setAttractionError] = useState(null);
   useBalance();
   const { regions } = useRegions();
+  const userRegionCode = getUserRegionCode(user);
 
   const normalizedSearchText = searchText.trim().toLowerCase();
   const selectedRegionCenter = useMemo(() => {
@@ -358,13 +363,12 @@ export default function MapScreen() {
       return;
     }
 
-    const userRegionCode = user?.region?.code;
     const userRegion = regions.find((region) => region.regionCode === userRegionCode);
 
     if (userRegion) {
       setSelectedRegion(userRegion);
     }
-  }, [regions, selectedRegion, user?.region?.code]);
+  }, [regions, selectedRegion, userRegionCode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -457,6 +461,11 @@ export default function MapScreen() {
   }, [selectedMapZoom, selectedRegionCenter]);
 
   const handleSelectRegion = (region) => {
+    if (userRegionCode && region?.regionCode !== userRegionCode) {
+      Alert.alert('내 지역만 볼 수 있어요', '지도에는 거주자 인증을 완료한 내 지역의 채택 명소만 표시돼요.');
+      return;
+    }
+
     setSelectedRegion(region);
     setRegionRecommendations([]);
     setRegionCenterOverride(null);

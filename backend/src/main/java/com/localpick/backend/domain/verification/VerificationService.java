@@ -2,6 +2,7 @@ package com.localpick.backend.domain.verification;
 
 import com.localpick.backend.domain.region.Region;
 import com.localpick.backend.domain.region.RegionRepository;
+import com.localpick.backend.domain.region.RegionResponse;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.global.exception.BusinessException;
@@ -74,7 +75,8 @@ public class VerificationService {
                 verification.getVerifyCount(),
                 verification.isVerified(),
                 verification.nextVerifyDate(),
-                verification.badgeStatus(now)
+                verification.badgeStatus(now),
+                RegionResponse.from(region)
         );
     }
 
@@ -89,7 +91,7 @@ public class VerificationService {
                 .orElse(null);
 
         if (verification == null) {
-            return new ResidentStatusResponse(false, 0, null, null, "inactive");
+            return new ResidentStatusResponse(false, 0, null, null, "inactive", null);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -99,7 +101,8 @@ public class VerificationService {
                 verification.getLastVerifiedAt() != null
                         ? verification.getLastVerifiedAt().toLocalDate() : null,
                 verification.nextVerifyDate(),
-                verification.badgeStatus(now)
+                verification.badgeStatus(now),
+                RegionResponse.from(verification.getRegion())
         );
     }
 }

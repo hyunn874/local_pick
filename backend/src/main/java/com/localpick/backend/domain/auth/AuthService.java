@@ -3,6 +3,8 @@ package com.localpick.backend.domain.auth;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.domain.user.UserResponse;
+import com.localpick.backend.domain.verification.ResidentVerification;
+import com.localpick.backend.domain.verification.ResidentVerificationRepository;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
 import com.localpick.backend.global.security.JwtTokenProvider;
@@ -10,6 +12,7 @@ import com.localpick.backend.infra.external.apple.AppleTokenVerifier;
 import com.localpick.backend.infra.external.kakao.KakaoOAuthClient;
 import com.localpick.backend.infra.external.kakao.KakaoTokenResponse;
 import com.localpick.backend.infra.external.kakao.KakaoUserResponse;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,6 +33,7 @@ public class AuthService {
     private final AppleTokenVerifier appleTokenVerifier;
     private final KakaoOAuthClient kakaoOAuthClient;
     private final UserRepository userRepository;
+    private final ResidentVerificationRepository verificationRepository;
     private final JwtTokenProvider jwtTokenProvider;
 
     @org.springframework.beans.factory.annotation.Value("${localpick.kakao.rest-api-key:}")
@@ -121,7 +125,13 @@ public class AuthService {
                 jwtTokenProvider.createRefreshToken(user.getId()),
                 jwtTokenProvider.getAccessTokenValiditySeconds(),
                 isNewUser,
-                UserResponse.from(user)
+                toUserResponse(user)
         );
+    }
+
+    private UserResponse toUserResponse(User user) {
+        ResidentVerification verification = verificationRepository.findByUserId(user.getId())
+                .orElse(null);
+        return UserResponse.from(user, verification, LocalDateTime.now());
     }
 }

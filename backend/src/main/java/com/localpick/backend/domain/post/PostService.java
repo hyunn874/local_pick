@@ -4,6 +4,7 @@ import com.localpick.backend.domain.region.Region;
 import com.localpick.backend.domain.region.RegionRepository;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
+import com.localpick.backend.domain.verification.ResidentVerification;
 import com.localpick.backend.domain.verification.ResidentVerificationRepository;
 import com.localpick.backend.domain.localpass.LocalPassHistory;
 import com.localpick.backend.domain.localpass.LocalPassHistoryRepository;
@@ -67,9 +68,9 @@ public class PostService {
         Region region = regionRepository.findByRegionCode(request.regionCode())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
 
-        boolean isResident = verificationRepository.findByUserIdAndRegionId(userId, region.getId())
-                .map(v -> v.isVerified())
-                .orElse(false);
+        if (!hasActiveResidentBadge(userId, region)) {
+            throw new BusinessException(ErrorCode.NOT_RESIDENT);
+        }
 
         Post post = Post.builder()
                 .author(user)
@@ -81,7 +82,7 @@ public class PostService {
                 .longitude(request.longitude())
                 .generationTag(user.getGenerationTag())
                 .imageUrls(request.imageUrls())
-                .writtenByResident(isResident)
+                .writtenByResident(true)
                 .build();
 
         postRepository.save(post);
@@ -124,6 +125,31 @@ public class PostService {
                 .toList();
     }
 
+    /** 인증된 내 지역의 채택 명소만 조회한다. */
+    @Transactional(readOnly = true)
+    public List<AdoptedPlaceResponse> findMyAdoptedPlaces(Long userId, String requestedRegionCode) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        ResidentVerification verification = verificationRepository.findByUserId(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_RESIDENT));
+        Region region = verification.getRegion();
+
+        if (!isActiveResident(verification)) {
+            throw new BusinessException(ErrorCode.NOT_RESIDENT);
+        }
+        if (requestedRegionCode != null && !requestedRegionCode.isBlank()
+                && !region.getRegionCode().equals(requestedRegionCode)) {
+            throw new BusinessException(ErrorCode.NOT_RESIDENT);
+        }
+
+        return postRepository.findAllByRegionIdAndAdoptedTrue(region.getId())
+                .stream()
+                .map(AdoptedPlaceResponse::from)
+                .toList();
+    }
+
     /** 채택 투표 — 거주자 인증된 사용자만, 한 게시글에 1회만 */
     @Transactional
     public AdoptionResponse vote(Long userId, Long postId) {
@@ -133,11 +159,7 @@ public class PostService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 거주자 인증 확인
-        boolean isResident = verificationRepository
-                .findByUserIdAndRegionId(userId, post.getRegion().getId())
-                .map(v -> v.isVerified())
-                .orElse(false);
-        if (!isResident) {
+        if (!hasActiveResidentBadge(userId, post.getRegion())) {
             throw new BusinessException(ErrorCode.NOT_RESIDENT);
         }
 
@@ -204,5 +226,16 @@ public class PostService {
         }
 
         postRepository.delete(post);
+    }
+
+    private boolean hasActiveResidentBadge(Long userId, Region region) {
+        return verificationRepository.findByUserIdAndRegionId(userId, region.getId())
+                .map(this::isActiveResident)
+                .orElse(false);
+    }
+
+    private boolean isActiveResident(ResidentVerification verification) {
+        return verification.isVerified()
+                && "active".equals(verification.badgeStatus(LocalDateTime.now()));
     }
 }

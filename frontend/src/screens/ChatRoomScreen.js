@@ -27,6 +27,7 @@ import { initialPosts } from '../mocks/chatRoomMockData';
 import { getPostCommentCounts } from '../state/postCommentCounts';
 import { getPostLikeCounts } from '../state/postLikeCounts';
 import { setMyPostProgress } from '../state/myPostProgress';
+import REGION_COORDINATES from '../data/regionCoordinates';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -41,7 +42,8 @@ const TARGET_LIKES = 30;
 
 function normalizePost(post) {
   const likes = Number(post.likes ?? post.likeCount ?? 0);
-  const targetLikes = Number(post.targetLikes ?? TARGET_LIKES);
+  const adoptionCount = Number(post.adoptionCount ?? 0);
+  const targetLikes = Number(post.adoptionThreshold ?? post.targetLikes ?? TARGET_LIKES);
 
   return {
     id: post.id ?? post.postId,
@@ -56,10 +58,10 @@ function normalizePost(post) {
     categoryTag: post.categoryTag || post.category || '기타',
     title: post.title || post.content || '제목 없음',
     content: post.content || '',
-    progress: Number(post.progress ?? Math.min(100, Math.round((likes / targetLikes) * 100))),
+    progress: Number(post.progress ?? Math.min(100, Math.round((adoptionCount / targetLikes) * 100))),
     likes,
     comments: Number(post.comments ?? post.commentCount ?? 0),
-    adoptionCount: Number(post.adoptionCount ?? 0),
+    adoptionCount,
     isAdopted: Boolean(post.isAdopted ?? post.adopted),
     regionCode: post.regionCode,
     regionName: post.regionName,
@@ -82,6 +84,36 @@ function getResidenceName(user) {
   }
 
   return user?.region?.fullName || user?.district || '내 동네';
+}
+
+function getUserRegion(user) {
+  if (user?.region && typeof user.region === 'object') {
+    return user.region;
+  }
+
+  return null;
+}
+
+function getUserRegionCode(user) {
+  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+}
+
+function getRegionCenter(region) {
+  const centerLatitude = Number(region?.centerLatitude);
+  const centerLongitude = Number(region?.centerLongitude);
+
+  if (Number.isFinite(centerLatitude) && Number.isFinite(centerLongitude)) {
+    return {
+      latitude: centerLatitude,
+      longitude: centerLongitude,
+    };
+  }
+
+  return REGION_COORDINATES[region?.regionCode || region?.code] || null;
+}
+
+function buildPostTitle(text) {
+  return text.length > 50 ? `${text.slice(0, 47)}...` : text;
 }
 
 function getResidentBadgeInfo(user) {
@@ -208,13 +240,14 @@ export default function ChatRoomScreen() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedAgeTag, setSelectedAgeTag] = useState('전체');
-  const [selectedCategory] = useState('기타');
   const [selectedImageUri, setSelectedImageUri] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const userRegion = getUserRegion(user);
   const regionName = getResidenceName(user);
-  const regionCode = user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+  const regionCode = getUserRegionCode(user);
+  const regionCenter = getRegionCenter(userRegion);
   const residentBadgeInfo = getResidentBadgeInfo(user);
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
@@ -369,10 +402,6 @@ export default function ChatRoomScreen() {
             likes: nextLikes,
             isLiked: nextLiked,
             likedByMe: nextLiked,
-            progress: Math.min(
-              100,
-              Math.round((nextLikes / (post.targetLikes ?? TARGET_LIKES)) * 100),
-            ),
           };
         }),
       );
@@ -403,15 +432,21 @@ export default function ChatRoomScreen() {
     try {
       const data = await apiClient.post(`/api/posts/${post.id}/adopt`);
       setPosts((currentPosts) =>
-        currentPosts.map((currentPost) =>
-          currentPost.id === post.id
-            ? {
-                ...currentPost,
-                adoptionCount: Number(data?.adoptionCount ?? currentPost.adoptionCount + 1),
-                isAdopted: Boolean(data?.adopted ?? data?.isAdopted ?? currentPost.isAdopted),
-              }
-            : currentPost,
-        ),
+        currentPosts.map((currentPost) => {
+          if (currentPost.id !== post.id) {
+            return currentPost;
+          }
+
+          const nextAdoptionCount = Number(data?.adoptionCount ?? currentPost.adoptionCount + 1);
+          const targetLikes = currentPost.targetLikes ?? TARGET_LIKES;
+
+          return {
+            ...currentPost,
+            adoptionCount: nextAdoptionCount,
+            progress: Math.min(100, Math.round((nextAdoptionCount / targetLikes) * 100)),
+            isAdopted: Boolean(data?.adopted ?? data?.isAdopted ?? currentPost.isAdopted),
+          };
+        }),
       );
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -482,39 +517,31 @@ export default function ChatRoomScreen() {
       return;
     }
 
+    if (message.trim().length < 10) {
+      Alert.alert('조금 더 알려주세요', '명소 소개는 10자 이상 입력해주세요.');
+      return;
+    }
+
     if (!regionCode) {
       Alert.alert('지역 정보가 필요해요', '거주 지역을 먼저 설정해주세요.');
+      return;
+    }
+
+    if (!regionCenter) {
+      Alert.alert('지역 좌표가 필요해요', '거주 지역 정보를 다시 불러온 뒤 시도해주세요.');
       return;
     }
 
     const inputText = message.trim();
     const uploadedImageUrl = await uploadImage(selectedImageUri);
     const requestBody = {
-      title: inputText,
+      title: buildPostTitle(inputText),
       content: inputText,
-      ageTag: selectedAgeTag || '전체',
+      placeName: buildPostTitle(inputText),
       regionCode,
-      imageUrl: uploadedImageUrl,
-    };
-    const fallbackPost = {
-      id: Date.now(),
-      author: user?.nickname || '나',
-      isResident: true,
-      time: '방금 전',
-      image: selectedImageUri,
-      imageUrl: selectedImageUri,
-      ageTag: selectedAgeTag || '전체',
-      generationTag: selectedAgeTag || '전체',
-      categoryTag: selectedCategory || '기타',
-      title: inputText,
-      content: inputText,
-      progress: 0,
-      likes: 0,
-      comments: 0,
-      targetLikes: TARGET_LIKES,
-      isMine: true,
-      isLiked: false,
-      likedByMe: false,
+      latitude: regionCenter.latitude,
+      longitude: regionCenter.longitude,
+      imageUrls: uploadedImageUrl ? [uploadedImageUrl] : [],
     };
 
     try {
@@ -528,11 +555,7 @@ export default function ChatRoomScreen() {
       await loadPosts();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      setPosts((currentPosts) => [fallbackPost, ...currentPosts]);
-      writeOngoingPick(fallbackPost);
-      setMessage('');
-      setSelectedImageUri(null);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('등록 실패', error?.message || '잠시 후 다시 시도해주세요.');
     }
   };
 

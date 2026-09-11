@@ -19,6 +19,7 @@ public record PostResponse(
         boolean writtenByResident,
         int likeCount,
         int adoptionCount,
+        int adoptionThreshold,
         boolean adopted,
         List<String> imageUrls,
         LocalDateTime createdAt
@@ -41,6 +42,7 @@ public record PostResponse(
                 post.isWrittenByResident(),
                 post.getLikeCount(),
                 post.getAdoptionCount(),
+                post.getRegion().getAdoptionThreshold(),
                 post.isAdopted(),
                 post.getImageUrls() != null ? List.copyOf(post.getImageUrls()) : List.of(),
                 post.getCreatedAt()
