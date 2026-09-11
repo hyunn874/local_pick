@@ -54,7 +54,7 @@
 | `PostDetailScreen` | `PostDetail` stack | route param `post` 필요. 없으면 오류 화면 대신 돌아가기 안내 | OS 공유 시트, 뒤로가기 | 게시글 상세 API 조회, 댓글 조회/작성, 좋아요, 댓글 좋아요, 공유, 본인 게시글 삭제, 좋아요/댓글 수 전역 임시 동기화 |
 | `NotificationScreen` | `Notification` stack | 로그인 사용자 또는 게스트 | 뒤로가기 | mock 알림 3개 표시, type별 아이콘, 읽지 않음 초록 점, 알림 클릭 시 읽음 처리, 빈 상태 |
 | `PassHistoryScreen` | `PassHistory` stack | 명시적 guard 없음. 보통 `LocalPass`에서 진입하므로 로그인 경로 | 뒤로가기 | `/api/local-pass/history` 호출, 로딩, 성공 시 내역 표시, API 실패 안내/재시도, 실패 시 기존 mock 유지, 빈 상태 |
-| `ResidentVerificationScreen` | `ResidentVerification` stack | 명시적 guard 없음. API 요청에는 accessToken 필요 | 인증 완료 후 뒤로가기 | 인증 상태 조회, 지역 입력(예: `서울특별시 은평구`), GPS 권한 요청, Kakao Reverse Geocoding, 실패 시 직접 입력, `POST /api/auth/resident-verify`, 인증 성공 후 `updateUser` 반영 |
+| `ResidentVerificationScreen` | `ResidentVerification` stack | 명시적 guard 없음. API 요청에는 accessToken 필요 | 인증 완료 후 뒤로가기 | 인증 상태 조회, 지역 입력(예: `서울특별시 은평구`), GPS 권한 요청, 서버 기반 네이버 Reverse Geocoding, 실패 시 직접 입력, `POST /api/auth/resident-verify/location`, 인증 성공 후 `updateUser` 반영 |
 | `SettingsScreen` | `Settings` stack | `SettingsRoute`에서 로그인 필요, 게스트/비로그인은 로그인 화면 표시 | `Terms`, `PrivacyPolicy`, AuthGate reset, 뒤로가기 | 약관/개인정보처리방침 이동, 문의, 앱 버전, 로그아웃, 회원탈퇴 |
 | `TermsScreen` | `Terms` stack | 로그인 사용자 또는 게스트 또는 로그인 화면에서 진입 가능 | 뒤로가기 | 이용약관 표시 |
 | `PrivacyPolicyScreen` | `PrivacyPolicy` stack | 로그인 사용자 또는 게스트 또는 로그인 화면에서 진입 가능 | 뒤로가기 | 개인정보처리방침 표시 |

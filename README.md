@@ -26,8 +26,8 @@ localpick/
 - **프론트엔드**: React.js (웹) / React Native (앱)
 - **백엔드**: Spring Boot (Java)
 - **DB**: MySQL
-- **지도**: 카카오맵 API
-- **거주자 인증 위치 변환**: 카카오 Reverse Geocoding API
+- **지도**: 네이버 지도 SDK
+- **거주자 인증 위치 변환**: 서버 기반 네이버 Reverse Geocoding API
 - **서버**: AWS EC2
 - **외부 API**: 한국관광공사 OpenAPI 6종
 
