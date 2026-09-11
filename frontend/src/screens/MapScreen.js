@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   Dimensions,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import apiClient from '../api/apiClient';
+import { fetchNearbyAttractions } from '../api/attractionApi';
 import { fetchRegionByCode } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
@@ -187,38 +189,17 @@ function RecommendationCard({ place, onPress, onAlternativePress }) {
   );
 }
 
-function createSimilarPlaces(place) {
-  const baseName = place?.title || place?.name || '선택한 명소';
-
-  return [
-    {
-      id: `${place?.id || 'place'}-alt-1`,
-      title: `${baseName} 근처 산책 코스`,
-      meta: '도보 8분 · 로컬패스 1개',
-    },
-    {
-      id: `${place?.id || 'place'}-alt-2`,
-      title: `${place?.category || '명소'} 인기 장소`,
-      meta: `${place?.generation || '전체'} 추천 · 로컬패스 1개`,
-    },
-    {
-      id: `${place?.id || 'place'}-alt-3`,
-      title: '비슷한 분위기의 숨은 명소',
-      meta: '주민 추천 · 채택 후보',
-    },
-  ];
-}
-
 function PlaceBottomSheet({
   animatedStyle,
+  attractionError,
+  isLoadingAttractions,
   onClose,
   onShowAlternatives,
   onUsePass,
   place,
+  relatedAttractions,
   showAlternatives,
 }) {
-  const similarPlaces = showAlternatives ? createSimilarPlaces(place) : [];
-
   return (
     <Animated.View style={[styles.bottomSheet, animatedStyle]}>
       <View style={styles.sheetHandle} />
@@ -242,12 +223,29 @@ function PlaceBottomSheet({
       </View>
       {showAlternatives && (
         <View style={styles.similarList}>
-          {similarPlaces.map((similarPlace) => (
-            <View key={similarPlace.id} style={styles.similarItem}>
-              <Text style={styles.similarTitle}>{similarPlace.title}</Text>
-              <Text style={styles.similarMeta}>{similarPlace.meta}</Text>
+          {isLoadingAttractions ? (
+            <View style={styles.similarStatusItem}>
+              <ActivityIndicator color={MAIN_GREEN} />
+              <Text style={styles.similarStatusText}>연관 관광지를 불러오는 중이에요</Text>
             </View>
-          ))}
+          ) : attractionError ? (
+            <View style={styles.similarStatusItem}>
+              <Text style={styles.similarStatusText}>{attractionError}</Text>
+            </View>
+          ) : relatedAttractions.length > 0 ? (
+            relatedAttractions.map((attraction) => (
+              <View key={attraction.id} style={styles.similarItem}>
+                <Text style={styles.similarTitle}>{attraction.title}</Text>
+                <Text style={styles.similarMeta}>
+                  {attraction.category} · {attraction.meta}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <View style={styles.similarStatusItem}>
+              <Text style={styles.similarStatusText}>근처 연관 관광지가 아직 없어요</Text>
+            </View>
+          )}
         </View>
       )}
       <View style={styles.sheetActions}>
@@ -284,6 +282,9 @@ export default function MapScreen() {
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [regionRecommendations, setRegionRecommendations] = useState([]);
   const [regionCenterOverride, setRegionCenterOverride] = useState(null);
+  const [relatedAttractions, setRelatedAttractions] = useState([]);
+  const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
+  const [attractionError, setAttractionError] = useState(null);
   useBalance();
   const { regions } = useRegions();
 
@@ -461,6 +462,8 @@ export default function MapScreen() {
     setRegionCenterOverride(null);
     setSelectedPin(null);
     setShowAlternatives(false);
+    setRelatedAttractions([]);
+    setAttractionError(null);
   };
 
   useEffect(() => {
@@ -482,6 +485,8 @@ export default function MapScreen() {
 
   const handleSelectMarker = (marker) => {
     setShowAlternatives(false);
+    setRelatedAttractions([]);
+    setAttractionError(null);
     setSelectedPin({
       ...marker,
       id: String(marker.id),
@@ -493,10 +498,43 @@ export default function MapScreen() {
 
   const handleRecommendationPress = (place) => {
     setShowAlternatives(false);
+    setRelatedAttractions([]);
+    setAttractionError(null);
     setSelectedPin({
       ...place,
       name: place.title,
     });
+  };
+
+  const loadRelatedAttractions = async (place) => {
+    const latitude = Number(place?.latitude);
+    const longitude = Number(place?.longitude);
+
+    setRelatedAttractions([]);
+    setAttractionError(null);
+
+    if (!place?.hasCoordinates || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setIsLoadingAttractions(false);
+      setAttractionError('정확한 좌표가 있는 채택 명소에서 연관 관광지를 볼 수 있어요');
+      return;
+    }
+
+    setIsLoadingAttractions(true);
+
+    try {
+      const attractions = await fetchNearbyAttractions({
+        latitude,
+        longitude,
+        radius: 5000,
+        limit: 5,
+      });
+
+      setRelatedAttractions(attractions);
+    } catch (error) {
+      setAttractionError('연관 관광지를 불러오지 못했어요. 잠시 후 다시 시도해주세요');
+    } finally {
+      setIsLoadingAttractions(false);
+    }
   };
 
   const handleAlternativePress = (place) => {
@@ -505,6 +543,16 @@ export default function MapScreen() {
       ...place,
       name: place.title,
     });
+    void loadRelatedAttractions(place);
+  };
+
+  const handleShowAlternatives = () => {
+    if (!selectedPin) {
+      return;
+    }
+
+    setShowAlternatives(true);
+    void loadRelatedAttractions(selectedPin);
   };
 
   const handleShowAllRecommendations = () => {
@@ -696,9 +744,12 @@ export default function MapScreen() {
         <PlaceBottomSheet
           place={selectedPin}
           animatedStyle={sheetAnimatedStyle}
+          attractionError={attractionError}
+          isLoadingAttractions={isLoadingAttractions}
           showAlternatives={showAlternatives}
+          relatedAttractions={relatedAttractions}
           onClose={() => setSelectedPin(null)}
-          onShowAlternatives={() => setShowAlternatives(true)}
+          onShowAlternatives={handleShowAlternatives}
           onUsePass={handleUsePass}
         />
       )}
@@ -1012,6 +1063,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F6F1',
     borderRadius: 8,
     padding: 12,
+  },
+  similarStatusItem: {
+    alignItems: 'center',
+    backgroundColor: '#F8F6F1',
+    borderRadius: 8,
+    gap: 8,
+    padding: 14,
+  },
+  similarStatusText: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
+    textAlign: 'center',
   },
   similarTitle: {
     color: TEXT_PRIMARY,
