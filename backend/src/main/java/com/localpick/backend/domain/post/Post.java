@@ -31,6 +31,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Post extends BaseTimeEntity {
 
+    public static final int ACTIVITY_LIKE_THRESHOLD = 10;
+    public static final int ACTIVITY_COMMENT_THRESHOLD = 3;
+    public static final int ACTIVITY_SHARE_THRESHOLD = 2;
+    public static final int ADOPTION_LIKE_THRESHOLD = 30;
+    public static final int ADOPTION_COMMENT_THRESHOLD = 10;
+    public static final int ADOPTION_SHARE_THRESHOLD = 5;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -83,6 +90,12 @@ public class Post extends BaseTimeEntity {
     @Column(nullable = false)
     private int likeCount;
 
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int shareCount;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean activityRewarded;
+
     @Builder
     private Post(User author, Region region, String title, String content, String placeName,
                  Double latitude, Double longitude, GenerationTag generationTag,
@@ -101,16 +114,26 @@ public class Post extends BaseTimeEntity {
         this.adopted = false;
         this.viewCount = 0;
         this.likeCount = 0;
+        this.shareCount = 0;
+        this.activityRewarded = false;
     }
 
     /**
-     * 추천 1건을 반영하고, 지역별 임계값을 넘으면 채택을 확정한다.
+     * 레거시 채택 투표 1건을 반영한다. 공식 채택 여부는 좋아요·댓글·공유
+     * 세 조건을 모두 충족했는지로 별도 판정한다.
      *
-     * @return 이번 추천으로 채택이 확정되었으면 true
+     * @return 증가 후 누적 채택 투표 수
      */
-    public boolean increaseAdoption(LocalDateTime now) {
+    public int increaseAdoption() {
         this.adoptionCount++;
-        if (!adopted && adoptionCount >= region.getAdoptionThreshold()) {
+        return adoptionCount;
+    }
+
+    public boolean adoptIfEngagementThresholdMet(long commentCount, LocalDateTime now) {
+        if (!adopted
+                && likeCount >= ADOPTION_LIKE_THRESHOLD
+                && commentCount >= ADOPTION_COMMENT_THRESHOLD
+                && shareCount >= ADOPTION_SHARE_THRESHOLD) {
             this.adopted = true;
             this.adoptedAt = now;
             return true;
@@ -130,6 +153,21 @@ public class Post extends BaseTimeEntity {
         if (this.likeCount > 0) {
             this.likeCount--;
         }
+    }
+
+    public void increaseShareCount() {
+        this.shareCount++;
+    }
+
+    public boolean qualifiesForActivityReward(long commentCount) {
+        return !activityRewarded
+                && likeCount >= ACTIVITY_LIKE_THRESHOLD
+                && commentCount >= ACTIVITY_COMMENT_THRESHOLD
+                && shareCount >= ACTIVITY_SHARE_THRESHOLD;
+    }
+
+    public void markActivityRewarded() {
+        this.activityRewarded = true;
     }
 
     public void edit(String title, String content, String placeName) {

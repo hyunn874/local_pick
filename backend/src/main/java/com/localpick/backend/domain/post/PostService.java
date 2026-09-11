@@ -1,5 +1,6 @@
 package com.localpick.backend.domain.post;
 
+import com.localpick.backend.domain.comment.CommentRepository;
 import com.localpick.backend.domain.region.Region;
 import com.localpick.backend.domain.region.RegionRepository;
 import com.localpick.backend.domain.user.User;
@@ -27,6 +28,7 @@ public class PostService {
     private final PostRepository postRepository;
     private final PostLikeRepository postLikeRepository;
     private final AdoptionVoteRepository adoptionVoteRepository;
+    private final CommentRepository commentRepository;
     private final UserRepository userRepository;
     private final RegionRepository regionRepository;
     private final ResidentVerificationRepository verificationRepository;
@@ -47,7 +49,7 @@ public class PostService {
         }
 
         return posts.getContent().stream()
-                .map(PostResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -57,7 +59,7 @@ public class PostService {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
         post.increaseViewCount();
-        return PostResponse.from(post);
+        return toResponse(post);
     }
 
     /** 게시글 작성 */
@@ -86,7 +88,7 @@ public class PostService {
                 .build();
 
         postRepository.save(post);
-        return PostResponse.from(post);
+        return toResponse(post);
     }
 
     /** 좋아요 토글 — 이미 눌렀으면 취소, 아니면 추가 */
@@ -102,6 +104,7 @@ public class PostService {
         if (existing.isPresent()) {
             postLikeRepository.delete(existing.get());
             post.decreaseLikeCount();
+            evaluateRewards(post);
             return new LikeResponse(postId, false, post.getLikeCount());
         } else {
             postLikeRepository.save(PostLike.builder()
@@ -109,6 +112,7 @@ public class PostService {
                     .user(user)
                     .build());
             post.increaseLikeCount();
+            evaluateRewards(post);
             return new LikeResponse(postId, true, post.getLikeCount());
         }
     }
@@ -171,34 +175,26 @@ public class PostService {
         adoptionVoteRepository.save(AdoptionVote.builder()
                 .post(post).user(user).build());
 
-        boolean justAdopted = post.increaseAdoption(LocalDateTime.now());
-
-        // 채택 확정 시 작성자에게 로컬패스 지급
-        if (justAdopted) {
-            User author = post.getAuthor();
-            int reward = LocalPassReason.POST_ADOPTED.getAmount();
-            author.applyLocalPassDelta(reward);
-            localPassHistoryRepository.save(LocalPassHistory.builder()
-                    .user(author)
-                    .amount(reward)
-                    .reason(LocalPassReason.POST_ADOPTED)
-                    .referenceId(postId)
-                    .balanceAfter(author.getLocalPassBalance())
-                    .build());
-        }
-
-        // 투표자에게 참여 보상
-        int participationReward = LocalPassReason.ADOPTION_PARTICIPATED.getAmount();
-        user.applyLocalPassDelta(participationReward);
-        localPassHistoryRepository.save(LocalPassHistory.builder()
-                .user(user)
-                .amount(participationReward)
-                .reason(LocalPassReason.ADOPTION_PARTICIPATED)
-                .referenceId(postId)
-                .balanceAfter(user.getLocalPassBalance())
-                .build());
+        post.increaseAdoption();
+        boolean justAdopted = evaluateRewards(post);
 
         return new AdoptionResponse(postId, post.getAdoptionCount(), post.isAdopted(), justAdopted);
+    }
+
+    /** 공유 완료 기록 — 제안서 기준 채택 조건의 공유 수를 누적한다. */
+    @Transactional
+    public ShareResponse recordShare(Long userId, Long postId) {
+        if (userId == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+
+        post.increaseShareCount();
+        boolean justAdopted = evaluateRewards(post);
+
+        return new ShareResponse(postId, post.getShareCount(), post.isAdopted(), justAdopted);
     }
 
     /** 게시글 수정 — 본인만 가능 */
@@ -212,7 +208,7 @@ public class PostService {
         }
 
         post.edit(request.title(), request.content(), request.placeName());
-        return PostResponse.from(post);
+        return toResponse(post);
     }
 
     /** 게시글 삭제 — 본인만 가능 */
@@ -237,5 +233,60 @@ public class PostService {
     private boolean isActiveResident(ResidentVerification verification) {
         return verification.isVerified()
                 && "active".equals(verification.badgeStatus(LocalDateTime.now()));
+    }
+
+    @Transactional
+    public void evaluateRewardsForPost(Long postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.POST_NOT_FOUND));
+        evaluateRewards(post);
+    }
+
+    private boolean evaluateRewards(Post post) {
+        long commentCount = commentRepository.countByPostId(post.getId());
+        grantActivityRewardIfEligible(post, commentCount);
+        return adoptIfEligible(post, commentCount);
+    }
+
+    private void grantActivityRewardIfEligible(Post post, long commentCount) {
+        if (!post.qualifiesForActivityReward(commentCount)) {
+            return;
+        }
+        if (localPassHistoryRepository.existsByUserIdAndReasonAndReferenceId(
+                post.getAuthor().getId(), LocalPassReason.ACTIVITY_THRESHOLD, post.getId())) {
+            post.markActivityRewarded();
+            return;
+        }
+
+        grantLocalPass(post.getAuthor(), LocalPassReason.ACTIVITY_THRESHOLD, post.getId());
+        post.markActivityRewarded();
+    }
+
+    private boolean adoptIfEligible(Post post, long commentCount) {
+        boolean justAdopted = post.adoptIfEngagementThresholdMet(commentCount, LocalDateTime.now());
+        if (justAdopted && !localPassHistoryRepository.existsByUserIdAndReasonAndReferenceId(
+                post.getAuthor().getId(), LocalPassReason.POST_ADOPTED, post.getId())) {
+            grantLocalPass(post.getAuthor(), LocalPassReason.POST_ADOPTED, post.getId());
+        }
+        return justAdopted;
+    }
+
+    private void grantLocalPass(User user, LocalPassReason reason, Long referenceId) {
+        int amount = reason.getAmount();
+        if (amount == 0) {
+            return;
+        }
+        user.applyLocalPassDelta(amount);
+        localPassHistoryRepository.save(LocalPassHistory.builder()
+                .user(user)
+                .amount(amount)
+                .reason(reason)
+                .referenceId(referenceId)
+                .balanceAfter(user.getLocalPassBalance())
+                .build());
+    }
+
+    private PostResponse toResponse(Post post) {
+        return PostResponse.from(post, commentRepository.countByPostId(post.getId()));
     }
 }

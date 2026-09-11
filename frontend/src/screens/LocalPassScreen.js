@@ -425,12 +425,7 @@ function AuthenticatedLocalPassScreen() {
             </Text>
             <View style={styles.progressHeader}>
               <Text style={styles.progressText}>
-                채택까지 좋아요{' '}
-                {Math.max(
-                  0,
-                  (ongoingPick?.targetLikes ?? 30) - (ongoingPick?.likes ?? 13),
-                )}
-                개 남음
+                채택 조건: 좋아요 30 + 댓글 10 + 공유 5
               </Text>
               <Text style={styles.progressPercent}>
                 {ongoingPick?.progress ?? localPassSummary.ongoingProgress}%

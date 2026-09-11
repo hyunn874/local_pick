@@ -31,6 +31,8 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const TARGET_LIKES = 30;
+const TARGET_COMMENTS = 10;
+const TARGET_SHARES = 5;
 const INITIAL_COMMENTS = [
   {
     id: 1,
@@ -83,6 +85,21 @@ function writeOngoingPick(post, likes, progress) {
   });
 }
 
+function calculateAdoptionProgress({
+  likes = 0,
+  comments = 0,
+  shares = 0,
+  likeThreshold = TARGET_LIKES,
+  commentThreshold = TARGET_COMMENTS,
+  shareThreshold = TARGET_SHARES,
+}) {
+  const likeRatio = Math.min(1, Number(likes) / likeThreshold);
+  const commentRatio = Math.min(1, Number(comments) / commentThreshold);
+  const shareRatio = Math.min(1, Number(shares) / shareThreshold);
+
+  return Math.round(((likeRatio + commentRatio + shareRatio) / 3) * 100);
+}
+
 function normalizeComment(comment) {
   return {
     id: comment.id ?? comment.commentId ?? Date.now(),
@@ -104,6 +121,11 @@ function normalizeCommentsResponse(payload) {
 function normalizePost(post, fallback = {}) {
   const source = { ...fallback, ...(post || {}) };
   const likes = Number(source.likes ?? source.likeCount ?? 0);
+  const comments = Number(source.comments ?? source.commentCount ?? 0);
+  const shares = Number(source.shares ?? source.shareCount ?? 0);
+  const likeThreshold = Number(source.adoptionLikeThreshold ?? source.targetLikes ?? TARGET_LIKES);
+  const commentThreshold = Number(source.adoptionCommentThreshold ?? TARGET_COMMENTS);
+  const shareThreshold = Number(source.adoptionShareThreshold ?? TARGET_SHARES);
 
   return {
     ...source,
@@ -117,7 +139,20 @@ function normalizePost(post, fallback = {}) {
     generationTag: source.generationTag || source.ageTag || '전체',
     categoryTag: source.categoryTag || source.category || '기타',
     likes,
-    comments: Number(source.comments ?? source.commentCount ?? 0),
+    comments,
+    shares,
+    progress: Number(source.progress ?? calculateAdoptionProgress({
+      likes,
+      comments,
+      shares,
+      likeThreshold,
+      commentThreshold,
+      shareThreshold,
+    })),
+    adoptionLikeThreshold: likeThreshold,
+    adoptionCommentThreshold: commentThreshold,
+    adoptionShareThreshold: shareThreshold,
+    targetLikes: likeThreshold,
     adoptionCount: Number(source.adoptionCount ?? 0),
     isAdopted: Boolean(source.isAdopted ?? source.adopted),
   };
@@ -186,7 +221,13 @@ export default function PostDetailScreen({ navigation, route }) {
 
     try {
       const data = await apiClient.get(`/api/posts/${initialPost.id}`);
-      setPost((currentPost) => normalizePost(data, currentPost));
+      setPost((currentPost) => {
+        const nextPost = normalizePost(data, currentPost);
+
+        setLikeCount(nextPost.likes ?? 0);
+        setProgress(nextPost.progress ?? 0);
+        return nextPost;
+      });
     } catch (error) {
     } finally {
       setIsLoadingPost(false);
@@ -223,10 +264,14 @@ export default function PostDetailScreen({ navigation, route }) {
     setIsLiked((current) => {
       const nextIsLiked = !current;
       const nextLikes = likeCount + (current ? -1 : 1);
-      const nextProgress = Math.min(
-        100,
-        Math.round((nextLikes / (post?.targetLikes ?? TARGET_LIKES)) * 100),
-      );
+      const nextProgress = calculateAdoptionProgress({
+        likes: nextLikes,
+        comments: commentCount,
+        shares: post?.shares ?? 0,
+        likeThreshold: post?.adoptionLikeThreshold,
+        commentThreshold: post?.adoptionCommentThreshold,
+        shareThreshold: post?.adoptionShareThreshold,
+      });
 
       setLikeCount(nextLikes);
       setProgress(nextProgress);
@@ -243,10 +288,14 @@ export default function PostDetailScreen({ navigation, route }) {
       const likeData = await apiClient.post(`/api/posts/${post?.id}/like`);
       const nextLikes = Number(likeData?.likeCount ?? likeData?.likes ?? likeCount);
       const nextIsLiked = Boolean(likeData?.liked ?? likeData?.isLiked ?? likeData?.likedByMe ?? isLiked);
-      const nextProgress = Math.min(
-        100,
-        Math.round((nextLikes / (post?.targetLikes ?? TARGET_LIKES)) * 100),
-      );
+      const nextProgress = calculateAdoptionProgress({
+        likes: nextLikes,
+        comments: commentCount,
+        shares: post?.shares ?? 0,
+        likeThreshold: post?.adoptionLikeThreshold,
+        commentThreshold: post?.adoptionCommentThreshold,
+        shareThreshold: post?.adoptionShareThreshold,
+      });
 
       setIsLiked(nextIsLiked);
       setLikeCount(nextLikes);
@@ -284,15 +333,6 @@ export default function PostDetailScreen({ navigation, route }) {
       return;
     }
 
-    const fallbackComment = {
-      id: Date.now(),
-      author: user?.nickname || '나',
-      isResident: true,
-      content: commentText.trim(),
-      time: '방금 전',
-      likes: 0,
-      isLiked: false,
-    };
     try {
       const data = await apiClient.post(`/api/posts/${post?.id}/comments`, {
         content: commentText.trim(),
@@ -303,19 +343,20 @@ export default function PostDetailScreen({ navigation, route }) {
         const nextComments = [nextComment, ...currentComments];
 
         setPostCommentCount(post?.id, nextComments.length);
+        setProgress(calculateAdoptionProgress({
+          likes: likeCount,
+          comments: nextComments.length,
+          shares: post?.shares ?? 0,
+          likeThreshold: post?.adoptionLikeThreshold,
+          commentThreshold: post?.adoptionCommentThreshold,
+          shareThreshold: post?.adoptionShareThreshold,
+        }));
         return nextComments;
       });
       setCommentText('');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      setComments((currentComments) => {
-        const nextComments = [fallbackComment, ...currentComments];
-
-        setPostCommentCount(post?.id, nextComments.length);
-        return nextComments;
-      });
-      setCommentText('');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('댓글 등록 실패', '잠시 후 다시 시도해주세요.');
     }
   };
 
@@ -357,6 +398,21 @@ export default function PostDetailScreen({ navigation, route }) {
       const result = await Share.share(shareContent);
 
       if (result.action === Share.sharedAction) {
+        const shareData = await apiClient.post(`/api/posts/${post.id}/share`);
+        const nextShares = Number(shareData?.shareCount ?? (post?.shares ?? 0) + 1);
+        setPost((currentPost) => ({
+          ...currentPost,
+          shares: nextShares,
+          isAdopted: Boolean(shareData?.adopted ?? currentPost?.isAdopted),
+        }));
+        setProgress(calculateAdoptionProgress({
+          likes: likeCount,
+          comments: commentCount,
+          shares: nextShares,
+          likeThreshold: post?.adoptionLikeThreshold,
+          commentThreshold: post?.adoptionCommentThreshold,
+          shareThreshold: post?.adoptionShareThreshold,
+        }));
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
@@ -488,6 +544,7 @@ export default function PostDetailScreen({ navigation, route }) {
                 <View style={styles.countRow}>
                   <Text style={styles.countText}>좋아요 {likeCount}</Text>
                   <Text style={styles.countText}>댓글 {commentCount}</Text>
+                  <Text style={styles.countText}>공유 {post?.shares ?? 0}</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.shareButton}

@@ -18,14 +18,21 @@ public record PostResponse(
         String generationTag,
         boolean writtenByResident,
         int likeCount,
+        long commentCount,
+        int shareCount,
         int adoptionCount,
-        int adoptionThreshold,
+        int activityLikeThreshold,
+        int activityCommentThreshold,
+        int activityShareThreshold,
+        int adoptionLikeThreshold,
+        int adoptionCommentThreshold,
+        int adoptionShareThreshold,
         boolean adopted,
         List<String> imageUrls,
         LocalDateTime createdAt
 ) {
 
-    public static PostResponse from(Post post) {
+    public static PostResponse from(Post post, long commentCount) {
         return new PostResponse(
                 post.getId(),
                 post.getTitle(),
@@ -41,8 +48,15 @@ public record PostResponse(
                 post.getGenerationTag().name(),
                 post.isWrittenByResident(),
                 post.getLikeCount(),
+                commentCount,
+                post.getShareCount(),
                 post.getAdoptionCount(),
-                post.getRegion().getAdoptionThreshold(),
+                Post.ACTIVITY_LIKE_THRESHOLD,
+                Post.ACTIVITY_COMMENT_THRESHOLD,
+                Post.ACTIVITY_SHARE_THRESHOLD,
+                Post.ADOPTION_LIKE_THRESHOLD,
+                Post.ADOPTION_COMMENT_THRESHOLD,
+                Post.ADOPTION_SHARE_THRESHOLD,
                 post.isAdopted(),
                 post.getImageUrls() != null ? List.copyOf(post.getImageUrls()) : List.of(),
                 post.getCreatedAt()

@@ -2,6 +2,7 @@ package com.localpick.backend.domain.comment;
 
 import com.localpick.backend.domain.post.Post;
 import com.localpick.backend.domain.post.PostRepository;
+import com.localpick.backend.domain.post.PostService;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.global.exception.BusinessException;
@@ -17,6 +18,7 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final PostRepository postRepository;
+    private final PostService postService;
     private final UserRepository userRepository;
 
     @Transactional
@@ -31,6 +33,8 @@ public class CommentService {
                 .author(user)
                 .content(request.content())
                 .build());
+
+        postService.evaluateRewardsForPost(postId);
 
         return CommentResponse.from(comment);
     }

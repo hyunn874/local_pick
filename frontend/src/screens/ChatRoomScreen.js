@@ -40,10 +40,37 @@ const GRAY = '#8A918A';
 const AGE_TAGS = ['20대', '30-40대', '50대+'];
 const TARGET_LIKES = 30;
 
+function calculateAdoptionProgress({
+  likes = 0,
+  comments = 0,
+  shares = 0,
+  likeThreshold = 30,
+  commentThreshold = 10,
+  shareThreshold = 5,
+}) {
+  const likeRatio = Math.min(1, Number(likes) / likeThreshold);
+  const commentRatio = Math.min(1, Number(comments) / commentThreshold);
+  const shareRatio = Math.min(1, Number(shares) / shareThreshold);
+
+  return Math.round(((likeRatio + commentRatio + shareRatio) / 3) * 100);
+}
+
 function normalizePost(post) {
   const likes = Number(post.likes ?? post.likeCount ?? 0);
+  const comments = Number(post.comments ?? post.commentCount ?? 0);
+  const shares = Number(post.shares ?? post.shareCount ?? 0);
   const adoptionCount = Number(post.adoptionCount ?? 0);
-  const targetLikes = Number(post.adoptionThreshold ?? post.targetLikes ?? TARGET_LIKES);
+  const likeThreshold = Number(post.adoptionLikeThreshold ?? post.targetLikes ?? TARGET_LIKES);
+  const commentThreshold = Number(post.adoptionCommentThreshold ?? 10);
+  const shareThreshold = Number(post.adoptionShareThreshold ?? 5);
+  const progress = calculateAdoptionProgress({
+    likes,
+    comments,
+    shares,
+    likeThreshold,
+    commentThreshold,
+    shareThreshold,
+  });
 
   return {
     id: post.id ?? post.postId,
@@ -58,14 +85,18 @@ function normalizePost(post) {
     categoryTag: post.categoryTag || post.category || '기타',
     title: post.title || post.content || '제목 없음',
     content: post.content || '',
-    progress: Number(post.progress ?? Math.min(100, Math.round((adoptionCount / targetLikes) * 100))),
+    progress: Number(post.progress ?? progress),
     likes,
-    comments: Number(post.comments ?? post.commentCount ?? 0),
+    comments,
+    shares,
     adoptionCount,
     isAdopted: Boolean(post.isAdopted ?? post.adopted),
     regionCode: post.regionCode,
     regionName: post.regionName,
-    targetLikes,
+    targetLikes: likeThreshold,
+    adoptionLikeThreshold: likeThreshold,
+    adoptionCommentThreshold: commentThreshold,
+    adoptionShareThreshold: shareThreshold,
     isMine: Boolean(post.isMine ?? post.mine),
     isLiked: Boolean(post.isLiked ?? post.likedByMe),
     likedByMe: Boolean(post.likedByMe ?? post.isLiked),
@@ -346,6 +377,31 @@ export default function ChatRoomScreen() {
       const result = await Share.share(shareContent);
 
       if (result.action === Share.sharedAction) {
+        const shareData = await apiClient.post(`/api/posts/${post.id}/share`);
+        setPosts((currentPosts) =>
+          currentPosts.map((currentPost) => {
+            if (currentPost.id !== post.id) {
+              return currentPost;
+            }
+
+            const nextShares = Number(shareData?.shareCount ?? currentPost.shares + 1);
+            const nextProgress = calculateAdoptionProgress({
+              likes: currentPost.likes,
+              comments: currentPost.comments,
+              shares: nextShares,
+              likeThreshold: currentPost.adoptionLikeThreshold,
+              commentThreshold: currentPost.adoptionCommentThreshold,
+              shareThreshold: currentPost.adoptionShareThreshold,
+            });
+
+            return {
+              ...currentPost,
+              shares: nextShares,
+              progress: nextProgress,
+              isAdopted: Boolean(shareData?.adopted ?? shareData?.isAdopted ?? currentPost.isAdopted),
+            };
+          }),
+        );
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error) {
@@ -366,15 +422,20 @@ export default function ChatRoomScreen() {
         const nextLikedByMe = !(post.likedByMe ?? post.isLiked);
 
         const nextLikes = post.likes + (nextLikedByMe ? 1 : -1);
+        const nextProgress = calculateAdoptionProgress({
+          likes: nextLikes,
+          comments: post.comments,
+          shares: post.shares,
+          likeThreshold: post.adoptionLikeThreshold,
+          commentThreshold: post.adoptionCommentThreshold,
+          shareThreshold: post.adoptionShareThreshold,
+        });
         const nextPost = {
           ...post,
           likedByMe: nextLikedByMe,
           isLiked: nextLikedByMe,
           likes: nextLikes,
-          progress: Math.min(
-            100,
-            Math.round((nextLikes / (post.targetLikes ?? TARGET_LIKES)) * 100),
-          ),
+          progress: nextProgress,
         };
 
         if (nextPost.isMine) {
@@ -396,12 +457,21 @@ export default function ChatRoomScreen() {
 
           const nextLikes = Number(likeData?.likeCount ?? likeData?.likes ?? post.likes);
           const nextLiked = Boolean(likeData?.liked ?? likeData?.isLiked ?? likeData?.likedByMe ?? post.isLiked);
+          const nextProgress = calculateAdoptionProgress({
+            likes: nextLikes,
+            comments: post.comments,
+            shares: post.shares,
+            likeThreshold: post.adoptionLikeThreshold,
+            commentThreshold: post.adoptionCommentThreshold,
+            shareThreshold: post.adoptionShareThreshold,
+          });
 
           return {
             ...post,
             likes: nextLikes,
             isLiked: nextLiked,
             likedByMe: nextLiked,
+            progress: nextProgress,
           };
         }),
       );
@@ -438,12 +508,10 @@ export default function ChatRoomScreen() {
           }
 
           const nextAdoptionCount = Number(data?.adoptionCount ?? currentPost.adoptionCount + 1);
-          const targetLikes = currentPost.targetLikes ?? TARGET_LIKES;
 
           return {
             ...currentPost,
             adoptionCount: nextAdoptionCount,
-            progress: Math.min(100, Math.round((nextAdoptionCount / targetLikes) * 100)),
             isAdopted: Boolean(data?.adopted ?? data?.isAdopted ?? currentPost.isAdopted),
           };
         }),

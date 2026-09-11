@@ -45,6 +45,14 @@ public class PostController {
         return ApiResponse.ok(postService.toggleLike(userId, postId));
     }
 
+    /** POST /api/posts/{postId}/share — 공유 완료 기록 */
+    @PostMapping("/{postId}/share")
+    public ApiResponse<ShareResponse> share(
+            @CurrentUserId Long userId,
+            @PathVariable Long postId) {
+        return ApiResponse.ok(postService.recordShare(userId, postId));
+    }
+
     /** POST /api/posts/{postId}/adopt — 채택 투표 */
     @PostMapping("/{postId}/adopt")
     public ApiResponse<AdoptionResponse> adopt(
