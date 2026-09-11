@@ -32,8 +32,8 @@ public class RegionService {
     }
 
     /**
-     * 클라이언트가 카카오 Reverse Geocoding 으로 변환한 행정구역 텍스트로 지역을 찾는다.
-     * GPS 좌표는 서버로 오지 않는다.
+     * 행정구역 텍스트로 지역을 찾는다.
+     * 위치 기반 인증에서는 서버가 네이버 Reverse Geocoding 으로 변환한 값을 사용한다.
      */
     public RegionResponse findByName(String sidoName, String sigunguName) {
         Region region = regionRepository.findBySidoNameAndSigunguName(sidoName, sigunguName)

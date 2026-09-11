@@ -41,6 +41,12 @@ localpick:
     token-url: https://kauth.kakao.com/oauth/token
     user-info-url: https://kapi.kakao.com/v2/user/me
     # 카카오 콘솔에 등록하는 리다이렉트 URI (https 만 허용되므로 서버가 받는다)
+    callback-url: ${KAKAO_CALLBACK_URL:https://localpick-api.onrender.com/api/auth/kakao/callback}
+  naver:
+    maps:
+      reverse-geocoding-url: https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc
+      key-id: ${NAVER_MAP_KEY_ID:${NAVER_MAP_CLIENT_ID:}}
+      secret: ${NAVER_MAP_CLIENT_SECRET:}
     callback-url: ${KAKAO_CALLBACK_URL:https://localpick-api.fly.dev/api/auth/kakao/callback}
   app:
     # 콜백 처리 후 앱으로 되돌려보낼 딥링크

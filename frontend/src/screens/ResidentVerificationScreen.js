@@ -17,8 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import apiClient from '../api/apiClient';
-import { verifyResident } from '../api/authApi';
-import { getReverseGeocoding } from '../api/kakaoApi';
+import { verifyResident, verifyResidentByLocation } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 
 const BACKGROUND = '#F8F6F1';
@@ -277,11 +276,15 @@ export default function ResidentVerificationScreen({ navigation }) {
 
       const location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
-      let regionText;
 
       try {
-        regionText = await getReverseGeocoding(latitude, longitude);
-      } catch {
+        const verification = await verifyResidentByLocation({ latitude, longitude });
+        await handleVerificationResult(verification);
+      } catch (error) {
+        if (error?.code === 'A007') {
+          throw error;
+        }
+
         if (__DEV__) {
           setShowManualInput(true);
           return;
@@ -302,10 +305,6 @@ export default function ResidentVerificationScreen({ navigation }) {
         );
         return;
       }
-
-      const { sidoName, sigunguName } = parseRegionText(regionText);
-
-      await submitResidentVerification({ sidoName, sigunguName });
     } catch (error) {
       if (error?.code === 'A007') {
         Alert.alert(
@@ -414,7 +413,9 @@ export default function ResidentVerificationScreen({ navigation }) {
           ) : (
             <View style={styles.panel}>
               <Text style={styles.title}>GPS로 위치를 확인해요</Text>
-              <Text style={styles.subtitle}>7일 안에 3회 위치 확인이 필요해요</Text>
+              <Text style={styles.subtitle}>
+                거주자 인증을 위해 현재 위치를 행정구역으로 변환해요
+              </Text>
               <View style={styles.progressBox}>
                 <Text style={styles.progressLabel}>현재 진행</Text>
                 <Text style={styles.progressValue}>{statusVerifyCount}/3 회 완료</Text>

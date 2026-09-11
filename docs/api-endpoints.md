@@ -408,6 +408,23 @@ POST /api/auth/resident-verify
 
 > **주의:** latitude, longitude 를 보내지 않는다. 행정구역 텍스트만 전달.
 
+### 현재 위치 기반 거주자 인증
+
+```http
+POST /api/auth/resident-verify/location
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+```json
+{
+  "latitude": 36.3504,
+  "longitude": 127.3845
+}
+```
+
+서버가 네이버 Reverse Geocoding API로 좌표를 행정구역으로 변환한 뒤 거주자 인증을 처리한다.
+
 **인증 정책:**
 
 | 회차 | 조건 |

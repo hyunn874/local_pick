@@ -7,6 +7,8 @@ import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
+import com.localpick.backend.infra.external.naver.NaverRegion;
+import com.localpick.backend.infra.external.naver.NaverReverseGeocodingClient;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,7 @@ public class VerificationService {
     private final ResidentVerificationRepository verificationRepository;
     private final RegionRepository regionRepository;
     private final UserRepository userRepository;
+    private final NaverReverseGeocodingClient naverReverseGeocodingClient;
 
     /**
      * 거주자 인증 체크인.
@@ -78,6 +81,18 @@ public class VerificationService {
                 verification.badgeStatus(now),
                 RegionResponse.from(region)
         );
+    }
+
+    /**
+     * 현재 위치 좌표를 네이버 Reverse Geocoding 으로 행정구역으로 변환한 뒤 인증한다.
+     * 좌표는 저장하지 않고 변환 및 체크인 처리에만 사용한다.
+     */
+    @Transactional
+    public ResidentVerifyResponse checkInByLocation(Long userId, ResidentLocationVerifyRequest request) {
+        NaverRegion region = naverReverseGeocodingClient.reverseGeocode(
+                request.latitude(), request.longitude());
+
+        return checkIn(userId, new ResidentVerifyRequest(region.sidoName(), region.sigunguName()));
     }
 
     /** 현재 인증 상태 조회 */
