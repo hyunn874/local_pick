@@ -238,11 +238,12 @@ export default function ResidentVerificationScreen({ navigation }) {
       }));
       setConfirmedCount(Number(status?.verifyCount ?? 0));
       if (status?.region) {
+        const statusVerifyCount = Number(status?.verifyCount ?? 0);
         await updateUser({
-          isResidentVerified: Boolean(status?.isVerified),
+          isResidentVerified: Boolean(status?.isVerified || statusVerifyCount > 0),
           badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
           nextVerifyDate: status?.nextVerifyDate,
-          verifyCount: Number(status?.verifyCount ?? 0),
+          verifyCount: statusVerifyCount,
           requiredCount: Number(status?.requiredCount ?? 2),
           region: status.region,
         });
@@ -280,7 +281,7 @@ export default function ResidentVerificationScreen({ navigation }) {
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
     }));
     await updateUser({
-      isResidentVerified: Boolean(verification?.isVerified),
+      isResidentVerified: Boolean(verification?.isVerified || nextCount > 0),
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : 'inactive'),
       nextVerifyDate: verification?.nextVerifyDate,
       verifyCount: nextCount,

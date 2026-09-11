@@ -149,10 +149,12 @@ function buildPostTitle(text) {
 function getResidentBadgeInfo(user) {
   const badgeStatus = user?.badgeStatus || (user?.isResidentVerified ? 'active' : 'inactive');
   const verifyCount = Number(user?.verifyCount ?? 0);
+  const hasAccess = Boolean(user?.isResidentVerified || verifyCount > 0);
 
   if (badgeStatus === 'active') {
     return {
       isActive: true,
+      hasAccess: true,
       isPressable: false,
       label: '거주자 ✓',
       style: 'active',
@@ -162,6 +164,7 @@ function getResidentBadgeInfo(user) {
   if (verifyCount > 0) {
     return {
       isActive: false,
+      hasAccess: true,
       isPressable: true,
       label: '2차 인증 필요',
       style: 'renewal',
@@ -170,6 +173,7 @@ function getResidentBadgeInfo(user) {
 
   return {
     isActive: false,
+    hasAccess: false,
     isPressable: true,
     label: '거주자 인증하기',
     style: 'inactive',
@@ -281,7 +285,7 @@ export default function ChatRoomScreen() {
   const residentBadgeInfo = getResidentBadgeInfo(user);
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
-  const isResidentVerified = residentBadgeInfo.isActive;
+  const isResidentVerified = residentBadgeInfo.hasAccess;
   const visiblePosts = normalizedSearchText
     ? posts.filter((post) =>
         `${post.title} ${post.content} ${post.categoryTag}`

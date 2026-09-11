@@ -70,7 +70,7 @@ public class PostService {
         Region region = regionRepository.findByRegionCode(request.regionCode())
                 .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
 
-        if (!hasActiveResidentBadge(userId, region)) {
+        if (!hasResidentAccess(userId, region)) {
             throw new BusinessException(ErrorCode.NOT_RESIDENT);
         }
 
@@ -140,7 +140,7 @@ public class PostService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_RESIDENT));
         Region region = verification.getRegion();
 
-        if (!isActiveResident(verification)) {
+        if (!hasResidentAccess(verification)) {
             throw new BusinessException(ErrorCode.NOT_RESIDENT);
         }
         if (requestedRegionCode != null && !requestedRegionCode.isBlank()
@@ -163,7 +163,7 @@ public class PostService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         // 거주자 인증 확인
-        if (!hasActiveResidentBadge(userId, post.getRegion())) {
+        if (!hasResidentAccess(userId, post.getRegion())) {
             throw new BusinessException(ErrorCode.NOT_RESIDENT);
         }
 
@@ -224,15 +224,17 @@ public class PostService {
         postRepository.delete(post);
     }
 
-    private boolean hasActiveResidentBadge(Long userId, Region region) {
+    private boolean hasResidentAccess(Long userId, Region region) {
         return verificationRepository.findByUserIdAndRegionId(userId, region.getId())
-                .map(this::isActiveResident)
+                .map(this::hasResidentAccess)
                 .orElse(false);
     }
 
-    private boolean isActiveResident(ResidentVerification verification) {
-        return verification.isVerified()
-                && "active".equals(verification.badgeStatus(LocalDateTime.now()));
+    private boolean hasResidentAccess(ResidentVerification verification) {
+        return verification.getVerifyCount() > 0
+                && verification.getLastVerifiedAt() != null
+                && ResidentVerification.BADGE_EXPIRY_DAYS >= java.time.Duration.between(
+                        verification.getLastVerifiedAt(), LocalDateTime.now()).toDays();
     }
 
     @Transactional

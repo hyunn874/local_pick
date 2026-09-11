@@ -73,11 +73,16 @@ export function AuthProvider({ children }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const accessTokenRef = useRef(null);
   const refreshTokenRef = useRef(null);
+  const userRef = useRef(null);
 
   const syncTokenRefs = useCallback((nextAccessToken, nextRefreshToken) => {
     accessTokenRef.current = nextAccessToken ?? null;
     refreshTokenRef.current = nextRefreshToken ?? null;
   }, []);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -120,6 +125,7 @@ export function AuthProvider({ children }) {
     };
 
     setUser(normalizedAuthState.user);
+    userRef.current = normalizedAuthState.user;
     setAccessToken(normalizedAuthState.accessToken);
     setRefreshToken(normalizedAuthState.refreshToken);
     setIsOnboarded(normalizedAuthState.isOnboarded);
@@ -133,6 +139,7 @@ export function AuthProvider({ children }) {
 
   const clearAuthState = useCallback(async () => {
     setUser(null);
+    userRef.current = null;
     setAccessToken(null);
     setRefreshToken(null);
     setIsOnboarded(false);
@@ -144,7 +151,7 @@ export function AuthProvider({ children }) {
   const updateUser = useCallback(async (nextUserState) => {
     const storedAuth = (await readStoredAuth()) || {};
     const nextUser = {
-      ...(storedAuth.user || user || {}),
+      ...(storedAuth.user || userRef.current || {}),
       ...nextUserState,
     };
     const nextAuthState = {
@@ -153,10 +160,11 @@ export function AuthProvider({ children }) {
     };
 
     setUser(nextUser);
+    userRef.current = nextUser;
     await writeStoredAuth(nextAuthState);
 
     return nextUser;
-  }, [user]);
+  }, []);
 
   const startGuestMode = useCallback(() => {
     setIsGuest(true);

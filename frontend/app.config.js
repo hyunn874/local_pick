@@ -17,7 +17,7 @@ const baseConfig = {
     icon: './assets/icon.png',
     supportsTablet: true,
     bundleIdentifier: 'com.localpick.app',
-    buildNumber: '13',
+    buildNumber: '14',
     infoPlist: {
       NSLocationWhenInUseUsageDescription: '거주자 인증을 위해 위치 정보가 필요해요.',
     },
