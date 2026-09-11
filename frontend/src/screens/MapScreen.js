@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -598,9 +599,11 @@ export default function MapScreen() {
         <View style={styles.topContent}>
           <View style={styles.header}>
             <View style={styles.logoGroup}>
-              <View style={styles.logoIcon}>
-                <Text style={styles.logoIconText}>L</Text>
-              </View>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logoIcon}
+                contentFit="contain"
+              />
               <Text style={styles.logoText}>로컬픽</Text>
             </View>
 
@@ -726,17 +729,9 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   logoIcon: {
-    alignItems: 'center',
-    backgroundColor: MAIN_GREEN,
     borderRadius: 8,
     height: 32,
-    justifyContent: 'center',
     width: 32,
-  },
-  logoIconText: {
-    color: CARD,
-    fontSize: 18,
-    fontWeight: '900',
   },
   logoText: {
     color: MAIN_GREEN,
