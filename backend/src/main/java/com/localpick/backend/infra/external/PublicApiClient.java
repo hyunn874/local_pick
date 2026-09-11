@@ -86,12 +86,12 @@ public class PublicApiClient {
         }
     }
 
-    /** serviceKey 만 원본 유지하고 나머지 파라미터는 UTF-8 인코딩한다. */
+    /** 모든 쿼리 파라미터를 UTF-8 인코딩한다. */
     private String buildUrl(String baseUrl, Map<String, String> params, String serviceKey) {
         String base = baseUrl.contains("?") ? baseUrl.split("\\?")[0] : baseUrl;
 
         StringJoiner query = new StringJoiner("&");
-        query.add("serviceKey=" + serviceKey);
+        query.add("serviceKey=" + java.net.URLEncoder.encode(serviceKey, java.nio.charset.StandardCharsets.UTF_8));
 
         params.forEach((k, v) -> {
             if (k != null && !k.isBlank() && v != null) {
