@@ -3,8 +3,11 @@ package com.localpick.backend.domain.user;
 import com.localpick.backend.domain.localpass.LocalPassHistory;
 import com.localpick.backend.domain.localpass.LocalPassHistoryRepository;
 import com.localpick.backend.domain.localpass.LocalPassReason;
+import com.localpick.backend.domain.verification.ResidentVerification;
+import com.localpick.backend.domain.verification.ResidentVerificationRepository;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,10 +20,11 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final LocalPassHistoryRepository localPassHistoryRepository;
+    private final ResidentVerificationRepository verificationRepository;
 
     @Transactional(readOnly = true)
     public UserResponse findMe(Long userId) {
-        return UserResponse.from(getUser(userId));
+        return toResponse(getUser(userId));
     }
 
     /**
@@ -45,7 +49,7 @@ public class UserService {
 
         log.info("[User] 온보딩 완료 — userId={}, generation={}",
                 userId, request.generationTag());
-        return UserResponse.from(user);
+        return toResponse(user);
     }
 
     @Transactional
@@ -53,14 +57,14 @@ public class UserService {
         User user = getUser(userId);
 
         if (nickname.equals(user.getNickname())) {
-            return UserResponse.from(user);
+            return toResponse(user);
         }
         if (userRepository.existsByNickname(nickname)) {
             throw new BusinessException(ErrorCode.NICKNAME_DUPLICATED);
         }
 
         user.changeNickname(nickname);
-        return UserResponse.from(user);
+        return toResponse(user);
     }
 
     @Transactional(readOnly = true)
@@ -104,5 +108,11 @@ public class UserService {
         }
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private UserResponse toResponse(User user) {
+        ResidentVerification verification = verificationRepository.findByUserId(user.getId())
+                .orElse(null);
+        return UserResponse.from(user, verification, LocalDateTime.now());
     }
 }

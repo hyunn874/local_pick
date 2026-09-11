@@ -1,6 +1,6 @@
 package com.localpick.backend.infra.external;
 
-import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
@@ -8,8 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriUtils;
-
-import java.nio.charset.StandardCharsets;
 
 /**
  * 공공데이터포털 API 호출기.
@@ -54,7 +52,7 @@ public class PublicApiClient {
         log.info("[PublicApi] 요청 → {}", maskKey(fullUrl));
 
         String body = restClient.get()
-                .uri(URI.create(fullUrl))
+                .uri(fullUrl, new Object[]{})
                 .retrieve()
                 .body(String.class);
 

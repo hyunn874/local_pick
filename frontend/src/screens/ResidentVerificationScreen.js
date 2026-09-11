@@ -138,11 +138,20 @@ export default function ResidentVerificationScreen({ navigation }) {
         badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
       }));
       setConfirmedCount(Number(status?.verifyCount ?? 0));
+      if (status?.region) {
+        await updateUser({
+          isResidentVerified: Boolean(status?.isVerified),
+          badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
+          nextVerifyDate: status?.nextVerifyDate,
+          verifyCount: Number(status?.verifyCount ?? 0),
+          region: status.region,
+        });
+      }
     } catch (error) {
     } finally {
       setIsLoadingStatus(false);
     }
-  }, []);
+  }, [updateUser]);
 
   useEffect(() => {
     void loadResidentStatus();
@@ -184,6 +193,7 @@ export default function ResidentVerificationScreen({ navigation }) {
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : 'inactive'),
       nextVerifyDate: verification?.nextVerifyDate,
       verifyCount: nextCount,
+      region: verification?.region || user?.region,
     });
 
     if (verification?.isVerified) {
@@ -203,7 +213,7 @@ export default function ResidentVerificationScreen({ navigation }) {
     }
 
     void loadResidentStatus();
-  }, [confirmedCount, loadResidentStatus, navigation, updateUser]);
+  }, [confirmedCount, loadResidentStatus, navigation, updateUser, user?.region]);
 
   const submitResidentVerification = useCallback(async ({ sidoName, sigunguName }) => {
     const verification = await verifyResident({ sidoName, sigunguName });

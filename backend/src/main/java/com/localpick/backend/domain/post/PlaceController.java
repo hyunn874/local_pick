@@ -1,6 +1,7 @@
 package com.localpick.backend.domain.post;
 
 import com.localpick.backend.global.response.ApiResponse;
+import com.localpick.backend.global.security.CurrentUserId;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -15,7 +16,8 @@ public class PlaceController {
     /** GET /api/places/adopted?regionCode=11110 — 채택된 명소 목록 */
     @GetMapping("/adopted")
     public ApiResponse<List<AdoptedPlaceResponse>> adopted(
+            @CurrentUserId Long userId,
             @RequestParam String regionCode) {
-        return ApiResponse.ok(postService.findAdoptedPlaces(regionCode));
+        return ApiResponse.ok(postService.findMyAdoptedPlaces(userId, regionCode));
     }
 }

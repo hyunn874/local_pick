@@ -10,30 +10,30 @@
       "env": {
         "EXPO_PUBLIC_APP_ENV": "development",
         "EXPO_PUBLIC_API_BASE_URL": "http://localhost:8080",
-        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "false",
-        "EXPO_PUBLIC_NAVER_MAP_CLIENT_ID": "$EXPO_PUBLIC_NAVER_MAP_CLIENT_ID"
+        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "true"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.onrender.com",
-        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "false",
-        "EXPO_PUBLIC_NAVER_MAP_CLIENT_ID": "$EXPO_PUBLIC_NAVER_MAP_CLIENT_ID"
+        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.fly.dev",
+        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "true"
       }
     },
     "production": {
-      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.onrender.com",
-        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "false",
-        "EXPO_PUBLIC_NAVER_MAP_CLIENT_ID": "$EXPO_PUBLIC_NAVER_MAP_CLIENT_ID"
+        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.fly.dev",
+        "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "true"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6805778038"
+      }
+    }
   }
 }
