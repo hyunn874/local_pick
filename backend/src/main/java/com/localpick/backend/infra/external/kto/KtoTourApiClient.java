@@ -59,7 +59,6 @@ public class KtoTourApiClient {
         params.put("numOfRows", String.valueOf(numOfRows));
         params.put("pageNo", "1");
         params.put("_type", "json");
-        params.put("listYN", "Y");
         params.put("arrange", "E"); // 거리순
 
         String body = publicApiClient.callKto(tourBaseUrl + OP_LOCATION_BASED, params);
@@ -70,6 +69,13 @@ public class KtoTourApiClient {
         List<NearbyAttractionItem> items = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(body);
+            if (root.has("resultCode")) {
+                log.error("[TourAPI] 응답 오류: {} — {}",
+                        root.path("resultCode").asText(),
+                        root.path("resultMsg").asText());
+                return items;
+            }
+
             JsonNode response = root.path("response");
             JsonNode header = response.path("header");
 
