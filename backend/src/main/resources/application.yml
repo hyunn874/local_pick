@@ -28,7 +28,7 @@ localpick:
     # 지역별 관광 다양성 — 연령/소비 (25%)
     diversity-base-url: https://apis.data.go.kr/B551011/AreaTarDivService
     # 국문관광정보서비스 — 위치기반 연관관광지
-    tour-base-url: https://apis.data.go.kr/B551011/KorService1
+    tour-base-url: https://apis.data.go.kr/B551011/KorService2
     mobile-app: LocalPick
     service-key: ${KTO_SERVICE_KEY:}
   mois:
