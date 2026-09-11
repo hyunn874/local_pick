@@ -58,15 +58,7 @@ public class PublicApiClient {
         URI uri;
         try {
             URL url = new URL(fullUrl);
-            uri = new URI(
-                    url.getProtocol(),
-                    null,
-                    url.getHost(),
-                    url.getPort(),
-                    url.getPath(),
-                    url.getQuery(),
-                    null
-            );
+            uri = url.toURI();
         } catch (MalformedURLException | URISyntaxException e) {
             throw new IllegalArgumentException("올바른 URL 이 아닙니다: " + maskKey(fullUrl), e);
         }
