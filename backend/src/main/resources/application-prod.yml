@@ -8,7 +8,7 @@
 #   MOIS_SERVICE_KEY    : 행정안전부 인증키 (미신청 시 비워둠)
 #   KAKAO_REST_API_KEY  : 카카오 REST API 키 (카카오 콘솔 > 앱 키)
 #   KAKAO_CLIENT_SECRET : 카카오 클라이언트 시크릿 (콘솔에서 "사용함" 설정 시 필수)
-#   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.onrender.com/api/auth/kakao/callback)
+#   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.fly.dev/api/auth/kakao/callback)
 spring:
   main:
     lazy-initialization: true   # Bean 을 기동 시 한꺼번에 올리지 않고 첫 요청 시 생성

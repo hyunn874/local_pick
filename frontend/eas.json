@@ -17,14 +17,14 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "preview",
-        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.fly.dev",
         "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "true"
       }
     },
     "production": {
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.onrender.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://localpick-api.fly.dev",
         "EXPO_PUBLIC_ENABLE_KAKAO_LOGIN": "true"
       }
     }
