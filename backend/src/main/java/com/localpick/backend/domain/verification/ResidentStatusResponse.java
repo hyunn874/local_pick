@@ -6,6 +6,7 @@ import java.time.LocalDate;
 public record ResidentStatusResponse(
         boolean isVerified,
         int verifyCount,
+        int requiredCount,
         LocalDate lastVerifyDate,
         LocalDate nextVerifyDate,
         String badgeStatus,

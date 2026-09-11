@@ -38,7 +38,7 @@ function getVerifyCountLabel(verifyCount) {
   }
 
   if (verifyCount === 2) {
-    return '두 번째 인증 완료';
+    return '거주자 인증 완료';
   }
 
   return '거주자 인증 유지 중';
@@ -99,6 +99,7 @@ export default function ResidentVerificationScreen({ navigation }) {
   const [residentStatus, setResidentStatus] = useState({
     isVerified: false,
     verifyCount: 0,
+    requiredCount: 2,
     lastVerifyDate: null,
     nextVerifyDate: null,
     badgeStatus: 'inactive',
@@ -119,6 +120,7 @@ export default function ResidentVerificationScreen({ navigation }) {
   const nextVerifyDate = residentStatus.nextVerifyDate;
   const isBadgeActive = residentStatus.badgeStatus === 'active' || residentStatus.isVerified;
   const statusVerifyCount = residentStatus.verifyCount ?? confirmedCount;
+  const requiredVerifyCount = residentStatus.requiredCount ?? 2;
   const verifyCountLabel = getVerifyCountLabel(Number(statusVerifyCount || 0));
   const nextVerifyInfo = getNextVerifyInfo(nextVerifyDate);
   const isVerifyLocked = !nextVerifyInfo.isAvailable;
@@ -144,6 +146,7 @@ export default function ResidentVerificationScreen({ navigation }) {
           badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
           nextVerifyDate: status?.nextVerifyDate,
           verifyCount: Number(status?.verifyCount ?? 0),
+          requiredCount: Number(status?.requiredCount ?? 2),
           region: status.region,
         });
       }
@@ -177,7 +180,7 @@ export default function ResidentVerificationScreen({ navigation }) {
 
   const handleVerificationResult = useCallback(async (verification) => {
     const nextCount = Math.min(
-      verification?.requiredCount ?? 3,
+      verification?.requiredCount ?? 2,
       verification?.verifyCount ?? confirmedCount + 1,
     );
 
@@ -186,6 +189,7 @@ export default function ResidentVerificationScreen({ navigation }) {
       ...currentStatus,
       ...verification,
       verifyCount: nextCount,
+      requiredCount: verification?.requiredCount ?? residentStatus.requiredCount ?? 2,
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
     }));
     await updateUser({
@@ -193,6 +197,7 @@ export default function ResidentVerificationScreen({ navigation }) {
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : 'inactive'),
       nextVerifyDate: verification?.nextVerifyDate,
       verifyCount: nextCount,
+      requiredCount: verification?.requiredCount ?? residentStatus.requiredCount ?? 2,
       region: verification?.region || user?.region,
     });
 
@@ -418,7 +423,9 @@ export default function ResidentVerificationScreen({ navigation }) {
               </Text>
               <View style={styles.progressBox}>
                 <Text style={styles.progressLabel}>현재 진행</Text>
-                <Text style={styles.progressValue}>{statusVerifyCount}/3 회 완료</Text>
+                <Text style={styles.progressValue}>
+                  {Math.min(statusVerifyCount, requiredVerifyCount)}/{requiredVerifyCount} 회 완료
+                </Text>
               </View>
               <TouchableOpacity
                 style={[

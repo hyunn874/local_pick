@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class VerificationService {
 
+    private static final int REQUIRED_VERIFY_COUNT = 2;
+
     private final ResidentVerificationRepository verificationRepository;
     private final RegionRepository regionRepository;
     private final UserRepository userRepository;
@@ -76,6 +78,7 @@ public class VerificationService {
 
         return new ResidentVerifyResponse(
                 verification.getVerifyCount(),
+                REQUIRED_VERIFY_COUNT,
                 verification.isVerified(),
                 verification.nextVerifyDate(),
                 verification.badgeStatus(now),
@@ -106,13 +109,14 @@ public class VerificationService {
                 .orElse(null);
 
         if (verification == null) {
-            return new ResidentStatusResponse(false, 0, null, null, "inactive", null);
+            return new ResidentStatusResponse(false, 0, REQUIRED_VERIFY_COUNT, null, null, "inactive", null);
         }
 
         LocalDateTime now = LocalDateTime.now();
         return new ResidentStatusResponse(
                 verification.isVerified(),
                 verification.getVerifyCount(),
+                REQUIRED_VERIFY_COUNT,
                 verification.getLastVerifiedAt() != null
                         ? verification.getLastVerifiedAt().toLocalDate() : null,
                 verification.nextVerifyDate(),

@@ -164,7 +164,7 @@ function getResidentBadgeInfo(user) {
     return {
       isActive: false,
       isPressable: true,
-      label: '인증 갱신 필요',
+      label: '2차 인증 필요',
       style: 'renewal',
     };
   }
