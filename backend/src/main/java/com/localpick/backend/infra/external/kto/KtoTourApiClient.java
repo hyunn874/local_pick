@@ -16,14 +16,14 @@ import org.springframework.stereotype.Component;
  * 한국관광공사 국문관광정보서비스(KorService1) 클라이언트.
  *
  * 오퍼레이션
- *  - locationBasedList1 : 위치기반 관광정보 조회 (반경 내 관광지)
+ *  - locationBasedList2 : 위치기반 관광정보 조회 (반경 내 관광지)
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class KtoTourApiClient {
 
-    private static final String OP_LOCATION_BASED = "/locationBasedList1";
+    private static final String OP_LOCATION_BASED = "/locationBasedList2";
 
     private final PublicApiClient publicApiClient;
     private final ObjectMapper objectMapper;
