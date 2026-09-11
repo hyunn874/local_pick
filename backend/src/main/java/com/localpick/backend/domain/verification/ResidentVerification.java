@@ -62,6 +62,13 @@ public class ResidentVerification extends BaseTimeEntity {
     @Column(nullable = false)
     private int verifyCount;
 
+    /**
+     * 운영 DB 에 남아있는 이전 컬럼이다.
+     * 신규 로직은 verifyCount 를 기준으로 동작하지만, 기존 NOT NULL 제약을 만족시키기 위해 함께 기록한다.
+     */
+    @Column(name = "check_in_count", nullable = false)
+    private int checkInCount;
+
     /** 1회차 인증 시각. 2회차 윈도우 계산의 기준점. */
     private LocalDateTime firstVerifiedAt;
 
@@ -77,6 +84,7 @@ public class ResidentVerification extends BaseTimeEntity {
         this.user = user;
         this.region = region;
         this.verifyCount = 0;
+        this.checkInCount = 0;
         this.verified = false;
     }
 
@@ -89,6 +97,7 @@ public class ResidentVerification extends BaseTimeEntity {
         if (verifyCount == 0) {
             // 1회차: 무조건 성공
             this.verifyCount = 1;
+            syncLegacyCheckInCount();
             this.firstVerifiedAt = now;
             this.lastVerifiedAt = now;
             return true;
@@ -101,6 +110,7 @@ public class ResidentVerification extends BaseTimeEntity {
                 return false;
             }
             this.verifyCount = 2;
+            syncLegacyCheckInCount();
             this.lastVerifiedAt = now;
             this.verified = true;
             return true;
@@ -112,6 +122,7 @@ public class ResidentVerification extends BaseTimeEntity {
             return false;
         }
         this.verifyCount++;
+        syncLegacyCheckInCount();
         this.lastVerifiedAt = now;
         return true;
     }
@@ -149,5 +160,9 @@ public class ResidentVerification extends BaseTimeEntity {
 
     private static long daysBetween(LocalDateTime from, LocalDateTime to) {
         return java.time.Duration.between(from, to).toDays();
+    }
+
+    private void syncLegacyCheckInCount() {
+        this.checkInCount = this.verifyCount;
     }
 }

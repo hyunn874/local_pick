@@ -23,7 +23,6 @@ import * as ImagePicker from 'expo-image-picker';
 
 import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
-import { initialPosts } from '../mocks/chatRoomMockData';
 import { getPostCommentCounts } from '../state/postCommentCounts';
 import { getPostLikeCounts } from '../state/postLikeCounts';
 import { setMyPostProgress } from '../state/myPostProgress';
@@ -267,7 +266,7 @@ export default function ChatRoomScreen() {
   const inputRef = useRef(null);
   const searchInputRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedAgeTag, setSelectedAgeTag] = useState('전체');
@@ -300,6 +299,13 @@ export default function ChatRoomScreen() {
   }, []);
 
   const loadPosts = useCallback(async ({ showLoading = false } = {}) => {
+    if (!accessToken || !regionCode || !isResidentVerified) {
+      setPosts([]);
+      setRefreshing(false);
+      setIsLoadingPosts(false);
+      return;
+    }
+
     if (showLoading) {
       setIsLoadingPosts(true);
     }
@@ -312,12 +318,12 @@ export default function ChatRoomScreen() {
 
       setPosts(nextPosts);
     } catch (error) {
-      setPosts((currentPosts) => (currentPosts.length > 0 ? currentPosts : initialPosts));
+      setPosts([]);
     } finally {
       setIsLoadingPosts(false);
       setRefreshing(false);
     }
-  }, [accessToken, regionCode]);
+  }, [accessToken, isResidentVerified, regionCode]);
 
   useFocusEffect(
     useCallback(() => {
@@ -628,6 +634,11 @@ export default function ChatRoomScreen() {
   };
 
   const handleFocusComposer = () => {
+    if (!isResidentVerified) {
+      navigation.navigate('ResidentVerification');
+      return;
+    }
+
     inputRef.current?.focus();
   };
 
@@ -640,9 +651,9 @@ export default function ChatRoomScreen() {
     <KeyboardAvoidingView
       style={styles.keyboardAvoidingView}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={88}
+      keyboardVerticalOffset={0}
     >
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>{regionName} 소통방</Text>
@@ -725,10 +736,16 @@ export default function ChatRoomScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>📍</Text>
               <Text style={styles.emptyTitle}>
-                {normalizedSearchText ? '검색 결과가 없어요' : '아직 공유된 명소가 없어요'}
+                {!isResidentVerified
+                  ? '거주자 인증이 필요해요'
+                  : normalizedSearchText
+                    ? '검색 결과가 없어요'
+                    : '아직 공유된 명소가 없어요'}
               </Text>
               <Text style={styles.emptyDescription}>
-                {normalizedSearchText
+                {!isResidentVerified
+                  ? '인증을 완료하면 내 거주 지역 소통방의 실제 게시글만 볼 수 있어요.'
+                  : normalizedSearchText
                   ? '다른 검색어로 다시 찾아보세요.'
                   : '우리 동네 숨은 명소를 첫 번째로 공유해보세요!'}
               </Text>
@@ -737,7 +754,9 @@ export default function ChatRoomScreen() {
                 activeOpacity={0.7}
                 onPress={handleFocusComposer}
               >
-                <Text style={styles.emptyButtonText}>명소 공유하기</Text>
+                <Text style={styles.emptyButtonText}>
+                  {isResidentVerified ? '명소 공유하기' : '거주자 인증하기'}
+                </Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -791,8 +810,9 @@ export default function ChatRoomScreen() {
           )}
           <View style={styles.composerInputRow}>
             <TouchableOpacity
-              style={styles.attachButton}
+              style={[styles.attachButton, !isResidentVerified && styles.disabledAttachButton]}
               activeOpacity={0.7}
+              disabled={!isResidentVerified}
               onPress={handlePickImage}
             >
               <Ionicons name="camera-outline" size={24} color={MAIN_GREEN} />
@@ -802,7 +822,8 @@ export default function ChatRoomScreen() {
               style={styles.input}
               value={message}
               onChangeText={setMessage}
-              placeholder="내 동네 명소를 공유해보세요..."
+              editable={isResidentVerified}
+              placeholder={isResidentVerified ? '내 동네 명소를 공유해보세요...' : '거주자 인증 후 참여할 수 있어요'}
               placeholderTextColor="#9B9F98"
             />
             <TouchableOpacity
@@ -924,7 +945,7 @@ const styles = StyleSheet.create({
   feedContent: {
     gap: 14,
     paddingHorizontal: 20,
-    paddingBottom: 18,
+    paddingBottom: 12,
   },
   emptyFeedContent: {
     flexGrow: 1,
@@ -1147,7 +1168,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     gap: 10,
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   ageTagRow: {
     flexDirection: 'row',
@@ -1214,6 +1236,9 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     width: 44,
+  },
+  disabledAttachButton: {
+    opacity: 0.45,
   },
   input: {
     backgroundColor: BACKGROUND,

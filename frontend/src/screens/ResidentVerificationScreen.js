@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +18,7 @@ import * as Location from 'expo-location';
 import apiClient from '../api/apiClient';
 import { verifyResident, verifyResidentByLocation } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useRegions } from '../hooks/useRegions';
 
 const BACKGROUND = '#F8F6F1';
 const MAIN_GREEN = '#2D5C44';
@@ -74,27 +74,72 @@ function getNextVerifyInfo(nextVerifyDate) {
   };
 }
 
-function parseRegionText(regionText) {
-  const [sidoName, ...sigunguParts] = regionText.trim().split(/\s+/);
-  const sigunguName = sigunguParts.join(' ');
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
 
-  if (!sidoName || !sigunguName) {
-    throw new Error('행정구역 정보를 확인할 수 없어요.');
+function splitSigungu(region) {
+  const sigunguName = region?.sigunguName || '';
+  const [first, ...rest] = sigunguName.split(/\s+/).filter(Boolean);
+  const isMetro = /특별시|광역시|특별자치시/.test(region?.sidoName || '');
+
+  if (rest.length > 0) {
+    return {
+      middle: first,
+      last: rest.join(' '),
+    };
   }
 
-  return { sidoName, sigunguName };
+  if (isMetro) {
+    return {
+      middle: '전체',
+      last: sigunguName,
+    };
+  }
+
+  return {
+    middle: sigunguName,
+    last: '전체',
+  };
+}
+
+function RegionPickerColumn({ title, options, selectedValue, onSelect }) {
+  return (
+    <View style={styles.pickerColumn}>
+      <Text style={styles.pickerColumnTitle}>{title}</Text>
+      <ScrollView
+        style={styles.pickerScroll}
+        contentContainerStyle={styles.pickerScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {options.map((option) => {
+          const isSelected = option === selectedValue;
+
+          return (
+            <TouchableOpacity
+              key={option}
+              style={[styles.pickerOption, isSelected && styles.selectedPickerOption]}
+              activeOpacity={0.7}
+              onPress={() => onSelect(option)}
+            >
+              <Text style={[styles.pickerOptionText, isSelected && styles.selectedPickerOptionText]}>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 }
 
 export default function ResidentVerificationScreen({ navigation }) {
   const { user, updateUser } = useAuth();
+  const { regions, isLoading: isLoadingRegions, error: regionsError, reload: reloadRegions } = useRegions();
   const [step, setStep] = useState(1);
-  const [regionInput, setRegionInput] = useState(() => {
-    if (typeof user?.region === 'string') {
-      return user.region;
-    }
-
-    return user?.region?.fullName || '';
-  });
+  const [selectedSido, setSelectedSido] = useState(user?.region?.sidoName || '');
+  const [selectedMiddle, setSelectedMiddle] = useState('');
+  const [selectedLast, setSelectedLast] = useState('');
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [residentStatus, setResidentStatus] = useState({
     isVerified: false,
@@ -107,16 +152,29 @@ export default function ResidentVerificationScreen({ navigation }) {
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
-  const [manualSidoName, setManualSidoName] = useState('');
-  const [manualSigunguName, setManualSigunguName] = useState('');
-  const trimmedRegion = regionInput.trim();
-  const trimmedManualSidoName = manualSidoName.trim();
-  const trimmedManualSigunguName = manualSigunguName.trim();
-  const canContinue = trimmedRegion.length > 0;
-  const canSubmitManual =
-    trimmedManualSidoName.length > 0
-    && trimmedManualSigunguName.length > 0
-    && !isCheckingLocation;
+  const sidoOptions = useMemo(() => unique(regions.map((region) => region.sidoName)), [regions]);
+  const regionsBySido = useMemo(
+    () => regions.filter((region) => region.sidoName === selectedSido),
+    [regions, selectedSido],
+  );
+  const middleOptions = useMemo(
+    () => unique(regionsBySido.map((region) => splitSigungu(region).middle)),
+    [regionsBySido],
+  );
+  const regionsByMiddle = useMemo(
+    () => regionsBySido.filter((region) => splitSigungu(region).middle === selectedMiddle),
+    [regionsBySido, selectedMiddle],
+  );
+  const lastOptions = useMemo(
+    () => unique(regionsByMiddle.map((region) => splitSigungu(region).last)),
+    [regionsByMiddle],
+  );
+  const selectedRegion = useMemo(
+    () => regionsByMiddle.find((region) => splitSigungu(region).last === selectedLast) || null,
+    [regionsByMiddle, selectedLast],
+  );
+  const canContinue = Boolean(selectedRegion);
+  const canSubmitManual = Boolean(selectedRegion) && !isCheckingLocation;
   const nextVerifyDate = residentStatus.nextVerifyDate;
   const isBadgeActive = residentStatus.badgeStatus === 'active' || residentStatus.isVerified;
   const statusVerifyCount = residentStatus.verifyCount ?? confirmedCount;
@@ -127,6 +185,45 @@ export default function ResidentVerificationScreen({ navigation }) {
   const verifyButtonText = isVerifyLocked
     ? `다음 인증 가능일: ${nextVerifyDate}`
     : '지금 위치 인증하기';
+
+  useEffect(() => {
+    if (selectedSido || sidoOptions.length === 0) {
+      return;
+    }
+
+    const currentSido = user?.region?.sidoName;
+    setSelectedSido(sidoOptions.includes(currentSido) ? currentSido : sidoOptions[0]);
+  }, [selectedSido, sidoOptions, user?.region?.sidoName]);
+
+  useEffect(() => {
+    if (middleOptions.length === 0) {
+      setSelectedMiddle('');
+      return;
+    }
+
+    if (!middleOptions.includes(selectedMiddle)) {
+      const currentSigungu = user?.region?.sigunguName;
+      const currentMiddle = currentSigungu
+        ? splitSigungu({ sidoName: selectedSido, sigunguName: currentSigungu }).middle
+        : '';
+      setSelectedMiddle(middleOptions.includes(currentMiddle) ? currentMiddle : middleOptions[0]);
+    }
+  }, [middleOptions, selectedMiddle, selectedSido, user?.region?.sigunguName]);
+
+  useEffect(() => {
+    if (lastOptions.length === 0) {
+      setSelectedLast('');
+      return;
+    }
+
+    if (!lastOptions.includes(selectedLast)) {
+      const currentSigungu = user?.region?.sigunguName;
+      const currentLast = currentSigungu
+        ? splitSigungu({ sidoName: selectedSido, sigunguName: currentSigungu }).last
+        : '';
+      setSelectedLast(lastOptions.includes(currentLast) ? currentLast : lastOptions[0]);
+    }
+  }, [lastOptions, selectedLast, selectedSido, user?.region?.sigunguName]);
 
   const loadResidentStatus = useCallback(async () => {
     setIsLoadingStatus(true);
@@ -163,16 +260,6 @@ export default function ResidentVerificationScreen({ navigation }) {
   const handleNext = () => {
     if (!canContinue) {
       return;
-    }
-
-    try {
-      const { sidoName, sigunguName } = parseRegionText(trimmedRegion);
-
-      setManualSidoName(sidoName);
-      setManualSigunguName(sigunguName);
-    } catch {
-      setManualSidoName('');
-      setManualSigunguName('');
     }
 
     setStep(2);
@@ -228,7 +315,7 @@ export default function ResidentVerificationScreen({ navigation }) {
 
   const handleManualVerify = async () => {
     if (!canSubmitManual) {
-      Alert.alert('입력 확인', '시·도와 시·군·구를 모두 입력해주세요.');
+      Alert.alert('지역 선택', '거주 지역을 먼저 선택해주세요.');
       return;
     }
 
@@ -236,8 +323,8 @@ export default function ResidentVerificationScreen({ navigation }) {
 
     try {
       await submitResidentVerification({
-        sidoName: trimmedManualSidoName,
-        sigunguName: trimmedManualSigunguName,
+        sidoName: selectedRegion.sidoName,
+        sigunguName: selectedRegion.sigunguName,
       });
     } catch (error) {
       if (error?.code === 'A007') {
@@ -386,7 +473,7 @@ export default function ResidentVerificationScreen({ navigation }) {
               <View style={[styles.stepTrackFill, step === 1 && styles.inactiveStepTrackFill]} />
             </View>
             <View style={styles.stepTextRow}>
-              <Text style={[styles.stepText, styles.activeStepText]}>거주 지역 입력</Text>
+              <Text style={[styles.stepText, styles.activeStepText]}>거주 지역 선택</Text>
               <Text style={[styles.stepText, step === 2 && styles.activeStepText]}>
                 GPS 위치 확인
               </Text>
@@ -395,17 +482,52 @@ export default function ResidentVerificationScreen({ navigation }) {
 
           {step === 1 ? (
             <View style={styles.panel}>
-              <Text style={styles.title}>거주 지역을 입력해주세요</Text>
-              <Text style={styles.subtitle}>실제 거주하시는 시·군·구를 입력해주세요</Text>
-              <TextInput
-                style={styles.input}
-                value={regionInput}
-                onChangeText={setRegionInput}
-                placeholder="서울특별시 은평구"
-                placeholderTextColor="#9B9F98"
-                returnKeyType="next"
-                onSubmitEditing={handleNext}
-              />
+              <Text style={styles.title}>거주 지역을 선택해주세요</Text>
+              <Text style={styles.subtitle}>시·도, 시·군, 구를 차례로 선택하면 인증 지역으로 저장돼요</Text>
+              {isLoadingRegions ? (
+                <View style={styles.regionLoadingBox}>
+                  <ActivityIndicator color={MAIN_GREEN} />
+                  <Text style={styles.regionLoadingText}>행정구역을 불러오고 있어요...</Text>
+                </View>
+              ) : regionsError ? (
+                <View style={styles.regionLoadingBox}>
+                  <Text style={styles.regionErrorText}>지역 목록을 불러오지 못했어요.</Text>
+                  <TouchableOpacity style={styles.retryButton} activeOpacity={0.7} onPress={() => reloadRegions()}>
+                    <Text style={styles.retryButtonText}>다시 불러오기</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.pickerWrap}>
+                    <RegionPickerColumn
+                      title="시·도"
+                      options={sidoOptions}
+                      selectedValue={selectedSido}
+                      onSelect={setSelectedSido}
+                    />
+                    <RegionPickerColumn
+                      title="시·군"
+                      options={middleOptions}
+                      selectedValue={selectedMiddle}
+                      onSelect={setSelectedMiddle}
+                    />
+                    <RegionPickerColumn
+                      title="구"
+                      options={lastOptions}
+                      selectedValue={selectedLast}
+                      onSelect={setSelectedLast}
+                    />
+                  </View>
+                  {selectedRegion && (
+                    <View style={styles.selectedRegionBox}>
+                      <Text style={styles.selectedRegionLabel}>선택한 거주지</Text>
+                      <Text style={styles.selectedRegionText}>
+                        {selectedRegion.sidoName} {selectedRegion.sigunguName}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
               <TouchableOpacity
                 style={[styles.primaryButton, !canContinue && styles.disabledButton]}
                 activeOpacity={0.7}
@@ -444,26 +566,17 @@ export default function ResidentVerificationScreen({ navigation }) {
               </TouchableOpacity>
               {showManualInput && (
                 <View style={styles.manualInputBox}>
-                  <Text style={styles.manualInputTitle}>직접 입력하기</Text>
+                  <Text style={styles.manualInputTitle}>선택 지역으로 인증하기</Text>
                   <Text style={styles.manualInputDescription}>
-                    GPS로 행정구역 확인이 어려우면 거주 지역을 직접 입력해주세요.
+                    GPS 확인이 어려우면 선택한 거주 지역으로 인증을 진행해주세요.
                   </Text>
-                  <TextInput
-                    style={styles.manualInput}
-                    value={manualSidoName}
-                    onChangeText={setManualSidoName}
-                    placeholder="시·도 예: 대전광역시"
-                    placeholderTextColor="#9B9F98"
-                    returnKeyType="next"
-                  />
-                  <TextInput
-                    style={styles.manualInput}
-                    value={manualSigunguName}
-                    onChangeText={setManualSigunguName}
-                    placeholder="시·군·구 예: 유성구"
-                    placeholderTextColor="#9B9F98"
-                    returnKeyType="done"
-                  />
+                  {selectedRegion && (
+                    <View style={styles.manualSelectedRegion}>
+                      <Text style={styles.manualSelectedRegionText}>
+                        {selectedRegion.sidoName} {selectedRegion.sigunguName}
+                      </Text>
+                    </View>
+                  )}
                   <TouchableOpacity
                     style={[
                       styles.primaryButton,
@@ -647,16 +760,103 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
-  input: {
+  regionLoadingBox: {
+    alignItems: 'center',
+    backgroundColor: '#F5F1EA',
+    borderRadius: 8,
+    gap: 10,
+    marginTop: 20,
+    minHeight: 160,
+    justifyContent: 'center',
+    padding: 18,
+  },
+  regionLoadingText: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  regionErrorText: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: CARD,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  pickerWrap: {
+    backgroundColor: '#F5F1EA',
     borderColor: BORDER,
     borderRadius: 8,
     borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 22,
+    padding: 10,
+  },
+  pickerColumn: {
+    flex: 1,
+  },
+  pickerColumnTitle: {
+    color: MAIN_GREEN,
+    fontSize: 12,
+    fontWeight: '900',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  pickerScroll: {
+    maxHeight: 170,
+  },
+  pickerScrollContent: {
+    gap: 6,
+  },
+  pickerOption: {
+    alignItems: 'center',
+    borderRadius: 8,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 8,
+  },
+  selectedPickerOption: {
+    backgroundColor: CARD,
+    borderColor: MAIN_GREEN,
+    borderWidth: 1,
+  },
+  pickerOptionText: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  selectedPickerOptionText: {
     color: TEXT_PRIMARY,
+    fontWeight: '900',
+  },
+  selectedRegionBox: {
+    backgroundColor: '#E7EFE9',
+    borderRadius: 8,
+    marginTop: 14,
+    padding: 14,
+  },
+  selectedRegionLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  selectedRegionText: {
+    color: MAIN_GREEN,
     fontSize: 16,
-    fontWeight: '700',
-    marginTop: 24,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    fontWeight: '900',
+    marginTop: 4,
   },
   primaryButton: {
     alignItems: 'center',
@@ -693,16 +893,17 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 6,
   },
-  manualInput: {
-    borderColor: BORDER,
+  manualSelectedRegion: {
+    backgroundColor: '#F5F1EA',
     borderRadius: 8,
-    borderWidth: 1,
-    color: TEXT_PRIMARY,
-    fontSize: 15,
-    fontWeight: '700',
     marginTop: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
+  },
+  manualSelectedRegionText: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '900',
   },
   progressBox: {
     backgroundColor: '#E7EFE9',
