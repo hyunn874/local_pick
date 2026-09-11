@@ -32,7 +32,7 @@
 | `GET /api/posts/{postId}` | `src/screens/PostDetailScreen.js` | 게시글 상세 | route 데이터로 초기 표시 후 서버 상세 데이터로 갱신 | 명세 있음 |
 | `DELETE /api/posts/{postId}` | `src/screens/PostDetailScreen.js` | 본인 게시글 삭제 | 삭제 성공 후 이전 화면으로 이동 | 명세 있음 |
 | `GET /api/ping` | `src/api/devApi.js` | 개발용 API 래퍼 | ping 결과 반환 | 명세 있음, 현재 연결 화면 없음 |
-| Kakao Local `coord2regioncode` | `src/api/kakaoApi.js`, `src/screens/ResidentVerificationScreen.js` | GPS 기반 행정구역 조회 | 좌표를 시도/시군구 이름으로 변환해 거주자 인증 요청에 사용 | 외부 API |
+| `POST /api/auth/resident-verify/location` | `src/api/authApi.js`, `src/screens/ResidentVerificationScreen.js` | GPS 기반 거주자 인증 | 현재 위치 좌표를 서버로 보내고, 서버가 네이버 Reverse Geocoding으로 행정구역을 확인해 인증 | 명세 추가 필요 |
 | 한국관광공사 `areaBasedList2`, `locationBasedList2` | `src/api/tourismApi.js` | 관광지 API 래퍼 | 관광지 목록 응답 반환 | 외부 API, 현재 연결 화면 없음 |
 
 ## 2. mock 폴백 사용 중인 API 목록

@@ -156,9 +156,6 @@ export default function RegionSelector({
                       >
                         {region.fullName}
                       </Text>
-                      {!!region.regionCode && (
-                        <Text style={styles.regionCode}>{region.regionCode}</Text>
-                      )}
                     </View>
                     {isSelected && <Ionicons name="checkmark" size={18} color={MAIN_GREEN} />}
                   </TouchableOpacity>
@@ -290,11 +287,5 @@ const styles = StyleSheet.create({
   },
   selectedRegionName: {
     color: MAIN_GREEN,
-  },
-  regionCode: {
-    color: TEXT_SECONDARY,
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 3,
   },
 });

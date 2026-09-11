@@ -21,6 +21,14 @@ public class VerificationController {
         return ApiResponse.ok(verificationService.checkIn(userId, request));
     }
 
+    /** POST /api/auth/resident-verify/location — 현재 위치 기반 거주자 인증 체크인 */
+    @PostMapping("/resident-verify/location")
+    public ApiResponse<ResidentVerifyResponse> checkInByLocation(
+            @CurrentUserId Long userId,
+            @Valid @RequestBody ResidentLocationVerifyRequest request) {
+        return ApiResponse.ok(verificationService.checkInByLocation(userId, request));
+    }
+
     /** GET /api/auth/resident-status — 현재 인증 상태 조회 */
     @GetMapping("/resident-status")
     public ApiResponse<ResidentStatusResponse> status(@CurrentUserId Long userId) {
