@@ -1,6 +1,10 @@
 package com.localpick.backend.infra.external;
 
+import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
@@ -8,8 +12,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriUtils;
-
-import java.nio.charset.StandardCharsets;
 
 /**
  * 공공데이터포털 API 호출기.
@@ -53,8 +55,24 @@ public class PublicApiClient {
         String fullUrl = buildUrl(baseUrl, params, serviceKey);
         log.info("[PublicApi] 요청 → {}", maskKey(fullUrl));
 
+        URI uri;
+        try {
+            URL url = new URL(fullUrl);
+            uri = new URI(
+                    url.getProtocol(),
+                    null,
+                    url.getHost(),
+                    url.getPort(),
+                    url.getPath(),
+                    url.getQuery(),
+                    null
+            );
+        } catch (MalformedURLException | URISyntaxException e) {
+            throw new IllegalArgumentException("올바른 URL 이 아닙니다: " + maskKey(fullUrl), e);
+        }
+
         String body = restClient.get()
-                .uri(URI.create(fullUrl))
+                .uri(uri)
                 .retrieve()
                 .body(String.class);
 
