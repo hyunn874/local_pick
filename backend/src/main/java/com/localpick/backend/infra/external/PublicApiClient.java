@@ -1,9 +1,5 @@
 package com.localpick.backend.infra.external;
 
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -55,21 +51,39 @@ public class PublicApiClient {
         String fullUrl = buildUrl(baseUrl, params, serviceKey);
         log.info("[PublicApi] 요청 → {}", maskKey(fullUrl));
 
-        URI uri;
-        try {
-            URL url = new URL(fullUrl);
-            uri = url.toURI();
-        } catch (MalformedURLException | URISyntaxException e) {
-            throw new IllegalArgumentException("올바른 URL 이 아닙니다: " + maskKey(fullUrl), e);
-        }
-
-        String body = restClient.get()
-                .uri(uri)
-                .retrieve()
-                .body(String.class);
+        String body = callDirect(fullUrl);
 
         log.info("[PublicApi] 응답 {}자", body == null ? 0 : body.length());
         return body;
+    }
+
+    private String callDirect(String fullUrl) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            java.net.URL url = new java.net.URL(fullUrl);
+            conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(30_000);
+
+            int status = conn.getResponseCode();
+            java.io.InputStream is = (status < 400) ? conn.getInputStream() : conn.getErrorStream();
+            String body = is == null
+                    ? ""
+                    : new String(is.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+
+            if (status >= 400) {
+                throw new org.springframework.web.client.HttpClientErrorException(
+                        org.springframework.http.HttpStatusCode.valueOf(status), body);
+            }
+            return body;
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("API 호출 실패: " + e.getMessage(), e);
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
     }
 
     /** serviceKey 만 원본 유지하고 나머지 파라미터는 UTF-8 인코딩한다. */
