@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 
 import apiClient from '../api/apiClient';
-import { verifyResident, verifyResidentByLocation } from '../api/authApi';
+import { verifyResidentByLocation } from '../api/authApi';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
 
@@ -151,7 +151,6 @@ export default function ResidentVerificationScreen({ navigation }) {
   });
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
   const sidoOptions = useMemo(() => unique(regions.map((region) => region.sidoName)), [regions]);
   const regionsBySido = useMemo(
     () => regions.filter((region) => region.sidoName === selectedSido),
@@ -174,7 +173,6 @@ export default function ResidentVerificationScreen({ navigation }) {
     [regionsByMiddle, selectedLast],
   );
   const canContinue = Boolean(selectedRegion);
-  const canSubmitManual = Boolean(selectedRegion) && !isCheckingLocation;
   const nextVerifyDate = residentStatus.nextVerifyDate;
   const isBadgeActive = residentStatus.badgeStatus === 'active' || residentStatus.isVerified;
   const statusVerifyCount = residentStatus.verifyCount ?? confirmedCount;
@@ -308,42 +306,14 @@ export default function ResidentVerificationScreen({ navigation }) {
     void loadResidentStatus();
   }, [confirmedCount, loadResidentStatus, navigation, updateUser, user?.region]);
 
-  const submitResidentVerification = useCallback(async ({ sidoName, sigunguName }) => {
-    const verification = await verifyResident({ sidoName, sigunguName });
-
-    await handleVerificationResult(verification);
-  }, [handleVerificationResult]);
-
-  const handleManualVerify = async () => {
-    if (!canSubmitManual) {
-      Alert.alert('지역 선택', '거주 지역을 먼저 선택해주세요.');
+  const handleVerifyLocation = async () => {
+    if (isCheckingLocation || isVerifyLocked) {
       return;
     }
 
-    setIsCheckingLocation(true);
-
-    try {
-      await submitResidentVerification({
-        sidoName: selectedRegion.sidoName,
-        sigunguName: selectedRegion.sigunguName,
-      });
-    } catch (error) {
-      if (error?.code === 'A007') {
-        Alert.alert(
-          '인증 불가',
-          `아직 인증 기간이 아니에요.\n다음 인증 가능일: ${error?.data?.nextVerifyDate || nextVerifyDate || '확인 필요'}`,
-        );
-        return;
-      }
-
-      Alert.alert('위치 확인 실패', error?.message || '잠시 후 다시 시도해주세요.');
-    } finally {
-      setIsCheckingLocation(false);
-    }
-  };
-
-  const handleVerifyLocation = async () => {
-    if (isCheckingLocation || isVerifyLocked) {
+    if (!selectedRegion) {
+      Alert.alert('지역 선택', '거주 지역을 먼저 선택해주세요.');
+      setStep(1);
       return;
     }
 
@@ -371,28 +341,39 @@ export default function ResidentVerificationScreen({ navigation }) {
       const { latitude, longitude } = location.coords;
 
       try {
-        const verification = await verifyResidentByLocation({ latitude, longitude });
+        const verification = await verifyResidentByLocation({
+          latitude,
+          longitude,
+          sidoName: selectedRegion.sidoName,
+          sigunguName: selectedRegion.sigunguName,
+        });
         await handleVerificationResult(verification);
       } catch (error) {
         if (error?.code === 'A007') {
           throw error;
         }
 
-        if (__DEV__) {
-          setShowManualInput(true);
+        if (error?.code === 'A008') {
+          Alert.alert(
+            '거주 지역이 달라요',
+            `선택한 지역은 ${selectedRegion.sidoName} ${selectedRegion.sigunguName}이지만, 현재 GPS 위치가 이 지역으로 확인되지 않았어요.\n실제 거주 지역을 다시 선택한 뒤 현재 위치에서 인증해주세요.`,
+            [
+              {
+                text: '지역 다시 선택',
+                onPress: () => setStep(1),
+              },
+            ],
+          );
           return;
         }
 
         Alert.alert(
           '위치 확인 실패',
           '현재 위치의 행정구역을 확인할 수 없어요.\n'
-          + 'Wi-Fi를 켜거나 실제 기기에서 시도해보세요.\n'
-          + '또는 거주 지역을 직접 입력할 수 있어요.',
+          + 'Wi-Fi를 켜거나 실제 기기에서 다시 시도해주세요.',
           [
-            { text: '닫기', style: 'cancel' },
             {
-              text: '직접 입력하기',
-              onPress: () => setShowManualInput(true),
+              text: '확인',
             },
           ],
         );
@@ -565,36 +546,6 @@ export default function ResidentVerificationScreen({ navigation }) {
                   <Text style={styles.primaryButtonText}>{verifyButtonText}</Text>
                 )}
               </TouchableOpacity>
-              {showManualInput && (
-                <View style={styles.manualInputBox}>
-                  <Text style={styles.manualInputTitle}>선택 지역으로 인증하기</Text>
-                  <Text style={styles.manualInputDescription}>
-                    GPS 확인이 어려우면 선택한 거주 지역으로 인증을 진행해주세요.
-                  </Text>
-                  {selectedRegion && (
-                    <View style={styles.manualSelectedRegion}>
-                      <Text style={styles.manualSelectedRegionText}>
-                        {selectedRegion.sidoName} {selectedRegion.sigunguName}
-                      </Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    style={[
-                      styles.primaryButton,
-                      !canSubmitManual && styles.disabledButton,
-                    ]}
-                    activeOpacity={0.7}
-                    disabled={!canSubmitManual}
-                    onPress={handleManualVerify}
-                  >
-                    {isCheckingLocation ? (
-                      <ActivityIndicator color={CARD} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>이 위치로 인증하기</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
           )}
         </ScrollView>
@@ -873,37 +824,6 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: CARD,
     fontSize: 16,
-    fontWeight: '900',
-  },
-  manualInputBox: {
-    borderColor: BORDER,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 18,
-    padding: 14,
-  },
-  manualInputTitle: {
-    color: TEXT_PRIMARY,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  manualInputDescription: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 19,
-    marginTop: 6,
-  },
-  manualSelectedRegion: {
-    backgroundColor: '#F5F1EA',
-    borderRadius: 8,
-    marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-  },
-  manualSelectedRegionText: {
-    color: TEXT_PRIMARY,
-    fontSize: 15,
     fontWeight: '900',
   },
   progressBox: {

@@ -27,6 +27,8 @@ public enum ErrorCode {
 
     // 거주자 인증
     VERIFY_NOT_IN_WINDOW(HttpStatus.BAD_REQUEST, "A007", "인증 가능한 기간이 아닙니다. 다음 인증 가능일을 확인해 주세요."),
+    RESIDENT_REGION_MISMATCH(HttpStatus.BAD_REQUEST, "A008", "선택한 지역과 현재 GPS 위치가 일치하지 않습니다."),
+    RESIDENT_GPS_REQUIRED(HttpStatus.BAD_REQUEST, "A009", "거주자 인증은 GPS 위치 확인이 필요합니다."),
 
     // 지역
     REGION_NOT_FOUND(HttpStatus.NOT_FOUND, "R001", "지역을 찾을 수 없습니다."),

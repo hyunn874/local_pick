@@ -63,8 +63,13 @@ export function verifyResident({ sidoName, sigunguName }) {
   return apiClient.post('/api/auth/resident-verify', { sidoName, sigunguName });
 }
 
-export function verifyResidentByLocation({ latitude, longitude }) {
-  return apiClient.post('/api/auth/resident-verify/location', { latitude, longitude });
+export function verifyResidentByLocation({ latitude, longitude, sidoName, sigunguName }) {
+  return apiClient.post('/api/auth/resident-verify/location', {
+    latitude,
+    longitude,
+    sidoName,
+    sigunguName,
+  });
 }
 
 export async function checkNicknameAvailability(nickname) {

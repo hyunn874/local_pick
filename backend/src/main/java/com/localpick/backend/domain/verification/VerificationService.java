@@ -92,10 +92,20 @@ public class VerificationService {
      */
     @Transactional
     public ResidentVerifyResponse checkInByLocation(Long userId, ResidentLocationVerifyRequest request) {
-        NaverRegion region = naverReverseGeocodingClient.reverseGeocode(
+        NaverRegion currentRegion = naverReverseGeocodingClient.reverseGeocode(
                 request.latitude(), request.longitude());
 
-        return checkIn(userId, new ResidentVerifyRequest(region.sidoName(), region.sigunguName()));
+        if (!sameRegion(currentRegion, request.sidoName(), request.sigunguName())) {
+            log.info("[Verification] GPS 지역 불일치 — userId={}, selected={} {}, gps={} {}",
+                    userId,
+                    request.sidoName(),
+                    request.sigunguName(),
+                    currentRegion.sidoName(),
+                    currentRegion.sigunguName());
+            throw new BusinessException(ErrorCode.RESIDENT_REGION_MISMATCH);
+        }
+
+        return checkIn(userId, new ResidentVerifyRequest(request.sidoName(), request.sigunguName()));
     }
 
     /** 현재 인증 상태 조회 */
@@ -123,5 +133,14 @@ public class VerificationService {
                 verification.badgeStatus(now),
                 RegionResponse.from(verification.getRegion())
         );
+    }
+
+    private boolean sameRegion(NaverRegion currentRegion, String selectedSidoName, String selectedSigunguName) {
+        return normalizeRegionName(currentRegion.sidoName()).equals(normalizeRegionName(selectedSidoName))
+                && normalizeRegionName(currentRegion.sigunguName()).equals(normalizeRegionName(selectedSigunguName));
+    }
+
+    private String normalizeRegionName(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").trim();
     }
 }
