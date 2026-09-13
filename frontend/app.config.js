@@ -17,7 +17,7 @@ const baseConfig = {
     icon: './assets/icon.png',
     supportsTablet: false,
     bundleIdentifier: 'com.localpick.app',
-    buildNumber: '17',
+    buildNumber: '1',
     infoPlist: {
       NSLocationWhenInUseUsageDescription: '거주자 인증을 위해 위치 정보가 필요해요.',
     },
@@ -117,7 +117,7 @@ module.exports = {
   extra: {
     ...baseConfig.extra,
     eas: {
-      projectId: 'd41ea5d8-3591-4f3e-bb2a-e4a5bfa3f136',
+      projectId: '13558fcb-90c4-4f36-bdd6-975f9b818358',
     },
     naver: {
       ...baseConfig.extra?.naver,
