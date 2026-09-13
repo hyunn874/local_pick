@@ -79,6 +79,9 @@ public class ResidentVerification extends BaseTimeEntity {
     @Column(nullable = false)
     private boolean verified;
 
+    /** GPS 역지오코딩으로 선택 지역과 실제 위치가 일치한 인증인지 */
+    private Boolean gpsVerified;
+
     @Builder
     private ResidentVerification(User user, Region region) {
         this.user = user;
@@ -86,6 +89,7 @@ public class ResidentVerification extends BaseTimeEntity {
         this.verifyCount = 0;
         this.checkInCount = 0;
         this.verified = false;
+        this.gpsVerified = false;
     }
 
     /**
@@ -139,6 +143,21 @@ public class ResidentVerification extends BaseTimeEntity {
             return "active";
         }
         return "inactive";
+    }
+
+    public void markGpsVerified() {
+        this.gpsVerified = true;
+    }
+
+    public boolean hasGpsVerification() {
+        return Boolean.TRUE.equals(gpsVerified);
+    }
+
+    public boolean hasResidentAccess(LocalDateTime now) {
+        return hasGpsVerification()
+                && verifyCount > 0
+                && lastVerifiedAt != null
+                && daysBetween(lastVerifiedAt, now) <= BADGE_EXPIRY_DAYS;
     }
 
     /**

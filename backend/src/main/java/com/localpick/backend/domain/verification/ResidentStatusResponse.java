@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 public record ResidentStatusResponse(
         boolean isVerified,
+        boolean residentAccess,
         int verifyCount,
         int requiredCount,
         LocalDate lastVerifyDate,

@@ -80,6 +80,7 @@ public class VerificationService {
                 verification.getVerifyCount(),
                 REQUIRED_VERIFY_COUNT,
                 verification.isVerified(),
+                verification.hasResidentAccess(now),
                 verification.nextVerifyDate(),
                 verification.badgeStatus(now),
                 RegionResponse.from(region)
@@ -105,7 +106,26 @@ public class VerificationService {
             throw new BusinessException(ErrorCode.RESIDENT_REGION_MISMATCH);
         }
 
-        return checkIn(userId, new ResidentVerifyRequest(request.sidoName(), request.sigunguName()));
+        ResidentVerification existingVerification = verificationRepository.findByUserId(userId)
+                .orElse(null);
+        if (existingVerification != null && !existingVerification.hasGpsVerification()) {
+            verificationRepository.deleteByUserId(userId);
+            verificationRepository.flush();
+            log.info("[Verification] GPS 미검증 기존 기록 초기화 — userId={}", userId);
+        }
+
+        ResidentVerifyResponse response = checkIn(userId, new ResidentVerifyRequest(request.sidoName(), request.sigunguName()));
+        verificationRepository.findByUserId(userId)
+                .ifPresent(ResidentVerification::markGpsVerified);
+        return new ResidentVerifyResponse(
+                response.verifyCount(),
+                response.requiredCount(),
+                response.isVerified(),
+                true,
+                response.nextVerifyDate(),
+                response.badgeStatus(),
+                response.region()
+        );
     }
 
     /** 현재 인증 상태 조회 */
@@ -119,12 +139,17 @@ public class VerificationService {
                 .orElse(null);
 
         if (verification == null) {
-            return new ResidentStatusResponse(false, 0, REQUIRED_VERIFY_COUNT, null, null, "inactive", null);
+            return new ResidentStatusResponse(false, false, 0, REQUIRED_VERIFY_COUNT, null, null, "inactive", null);
         }
 
         LocalDateTime now = LocalDateTime.now();
+        if (!verification.hasGpsVerification()) {
+            return new ResidentStatusResponse(false, false, 0, REQUIRED_VERIFY_COUNT, null, null, "inactive", null);
+        }
+
         return new ResidentStatusResponse(
                 verification.isVerified(),
+                verification.hasResidentAccess(now),
                 verification.getVerifyCount(),
                 REQUIRED_VERIFY_COUNT,
                 verification.getLastVerifiedAt() != null

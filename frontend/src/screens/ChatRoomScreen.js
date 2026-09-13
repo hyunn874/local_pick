@@ -149,7 +149,7 @@ function buildPostTitle(text) {
 function getResidentBadgeInfo(user) {
   const badgeStatus = user?.badgeStatus || (user?.isResidentVerified ? 'active' : 'inactive');
   const verifyCount = Number(user?.verifyCount ?? 0);
-  const hasAccess = Boolean(user?.isResidentVerified || verifyCount > 0);
+  const hasAccess = Boolean(user?.isResidentVerified);
 
   if (badgeStatus === 'active') {
     return {
@@ -164,9 +164,9 @@ function getResidentBadgeInfo(user) {
   if (verifyCount > 0) {
     return {
       isActive: false,
-      hasAccess: true,
+      hasAccess: false,
       isPressable: true,
-      label: '2차 인증 필요',
+      label: 'GPS 인증 필요',
       style: 'renewal',
     };
   }

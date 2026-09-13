@@ -235,17 +235,15 @@ export default function ResidentVerificationScreen({ navigation }) {
         badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
       }));
       setConfirmedCount(Number(status?.verifyCount ?? 0));
-      if (status?.region) {
-        const statusVerifyCount = Number(status?.verifyCount ?? 0);
-        await updateUser({
-          isResidentVerified: Boolean(status?.isVerified || statusVerifyCount > 0),
-          badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
-          nextVerifyDate: status?.nextVerifyDate,
-          verifyCount: statusVerifyCount,
-          requiredCount: Number(status?.requiredCount ?? 2),
-          region: status.region,
-        });
-      }
+      const statusVerifyCount = Number(status?.verifyCount ?? 0);
+      await updateUser({
+        isResidentVerified: Boolean(status?.residentAccess),
+        badgeStatus: status?.badgeStatus || (status?.isVerified ? 'active' : 'inactive'),
+        nextVerifyDate: status?.nextVerifyDate,
+        verifyCount: statusVerifyCount,
+        requiredCount: Number(status?.requiredCount ?? 2),
+        region: status?.region || null,
+      });
     } catch (error) {
     } finally {
       setIsLoadingStatus(false);
@@ -279,7 +277,7 @@ export default function ResidentVerificationScreen({ navigation }) {
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : currentStatus.badgeStatus),
     }));
     await updateUser({
-      isResidentVerified: Boolean(verification?.isVerified || nextCount > 0),
+      isResidentVerified: Boolean(verification?.residentAccess),
       badgeStatus: verification?.badgeStatus || (verification?.isVerified ? 'active' : 'inactive'),
       nextVerifyDate: verification?.nextVerifyDate,
       verifyCount: nextCount,

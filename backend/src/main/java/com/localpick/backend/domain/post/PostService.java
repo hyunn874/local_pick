@@ -231,10 +231,7 @@ public class PostService {
     }
 
     private boolean hasResidentAccess(ResidentVerification verification) {
-        return verification.getVerifyCount() > 0
-                && verification.getLastVerifiedAt() != null
-                && ResidentVerification.BADGE_EXPIRY_DAYS >= java.time.Duration.between(
-                        verification.getLastVerifiedAt(), LocalDateTime.now()).toDays();
+        return verification.hasResidentAccess(LocalDateTime.now());
     }
 
     @Transactional

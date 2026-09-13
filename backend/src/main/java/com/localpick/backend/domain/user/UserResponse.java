@@ -30,7 +30,7 @@ public record UserResponse(
     public static UserResponse from(User user, ResidentVerification verification, LocalDateTime now) {
         String badgeStatus = verification != null ? verification.badgeStatus(now) : "inactive";
         boolean isResidentVerified = verification != null
-                && verification.getVerifyCount() > 0;
+                && verification.hasResidentAccess(now);
 
         return new UserResponse(
                 user.getId(),

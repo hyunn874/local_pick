@@ -7,6 +7,7 @@ public record ResidentVerifyResponse(
         int verifyCount,
         int requiredCount,
         boolean isVerified,
+        boolean residentAccess,
         LocalDate nextVerifyDate,
         String badgeStatus,
         RegionResponse region
