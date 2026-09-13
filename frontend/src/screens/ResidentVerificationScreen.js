@@ -78,31 +78,6 @@ function unique(values) {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ko-KR'));
 }
 
-function splitSigungu(region) {
-  const sigunguName = region?.sigunguName || '';
-  const [first, ...rest] = sigunguName.split(/\s+/).filter(Boolean);
-  const isMetro = /특별시|광역시|특별자치시/.test(region?.sidoName || '');
-
-  if (rest.length > 0) {
-    return {
-      middle: first,
-      last: rest.join(' '),
-    };
-  }
-
-  if (isMetro) {
-    return {
-      middle: '전체',
-      last: sigunguName,
-    };
-  }
-
-  return {
-    middle: sigunguName,
-    last: '전체',
-  };
-}
-
 function RegionPickerColumn({ title, options, selectedValue, onSelect }) {
   return (
     <View style={styles.pickerColumn}>
@@ -139,8 +114,7 @@ export default function ResidentVerificationScreen({ navigation }) {
   const { regions, isLoading: isLoadingRegions, error: regionsError, reload: reloadRegions } = useRegions();
   const [step, setStep] = useState(1);
   const [selectedSido, setSelectedSido] = useState(user?.region?.sidoName || '');
-  const [selectedMiddle, setSelectedMiddle] = useState('');
-  const [selectedLast, setSelectedLast] = useState('');
+  const [selectedSigungu, setSelectedSigungu] = useState(user?.region?.sigunguName || '');
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [residentStatus, setResidentStatus] = useState({
     isVerified: false,
@@ -157,21 +131,13 @@ export default function ResidentVerificationScreen({ navigation }) {
     () => regions.filter((region) => region.sidoName === selectedSido),
     [regions, selectedSido],
   );
-  const middleOptions = useMemo(
-    () => unique(regionsBySido.map((region) => splitSigungu(region).middle)),
+  const sigunguOptions = useMemo(
+    () => unique(regionsBySido.map((region) => region.sigunguName)),
     [regionsBySido],
   );
-  const regionsByMiddle = useMemo(
-    () => regionsBySido.filter((region) => splitSigungu(region).middle === selectedMiddle),
-    [regionsBySido, selectedMiddle],
-  );
-  const lastOptions = useMemo(
-    () => unique(regionsByMiddle.map((region) => splitSigungu(region).last)),
-    [regionsByMiddle],
-  );
   const selectedRegion = useMemo(
-    () => regionsByMiddle.find((region) => splitSigungu(region).last === selectedLast) || null,
-    [regionsByMiddle, selectedLast],
+    () => regionsBySido.find((region) => region.sigunguName === selectedSigungu) || null,
+    [regionsBySido, selectedSigungu],
   );
   const canContinue = Boolean(selectedRegion);
   const nextVerifyDate = residentStatus.nextVerifyDate;
@@ -195,34 +161,16 @@ export default function ResidentVerificationScreen({ navigation }) {
   }, [selectedSido, sidoOptions, user?.region?.sidoName]);
 
   useEffect(() => {
-    if (middleOptions.length === 0) {
-      setSelectedMiddle('');
+    if (sigunguOptions.length === 0) {
+      setSelectedSigungu('');
       return;
     }
 
-    if (!middleOptions.includes(selectedMiddle)) {
-      const currentSigungu = user?.region?.sigunguName;
-      const currentMiddle = currentSigungu
-        ? splitSigungu({ sidoName: selectedSido, sigunguName: currentSigungu }).middle
-        : '';
-      setSelectedMiddle(middleOptions.includes(currentMiddle) ? currentMiddle : middleOptions[0]);
+    if (!sigunguOptions.includes(selectedSigungu)) {
+      const currentSigungu = user?.region?.sigunguName || '';
+      setSelectedSigungu(sigunguOptions.includes(currentSigungu) ? currentSigungu : sigunguOptions[0]);
     }
-  }, [middleOptions, selectedMiddle, selectedSido, user?.region?.sigunguName]);
-
-  useEffect(() => {
-    if (lastOptions.length === 0) {
-      setSelectedLast('');
-      return;
-    }
-
-    if (!lastOptions.includes(selectedLast)) {
-      const currentSigungu = user?.region?.sigunguName;
-      const currentLast = currentSigungu
-        ? splitSigungu({ sidoName: selectedSido, sigunguName: currentSigungu }).last
-        : '';
-      setSelectedLast(lastOptions.includes(currentLast) ? currentLast : lastOptions[0]);
-    }
-  }, [lastOptions, selectedLast, selectedSido, user?.region?.sigunguName]);
+  }, [selectedSigungu, sigunguOptions, user?.region?.sigunguName]);
 
   const loadResidentStatus = useCallback(async () => {
     setIsLoadingStatus(true);
@@ -475,7 +423,7 @@ export default function ResidentVerificationScreen({ navigation }) {
           {step === 1 ? (
             <View style={styles.panel}>
               <Text style={styles.title}>거주 지역을 선택해주세요</Text>
-              <Text style={styles.subtitle}>시·도, 시·군, 구를 차례로 선택하면 인증 지역으로 저장돼요</Text>
+              <Text style={styles.subtitle}>광역 시·도와 기초 시·군을 선택하면 인증 지역으로 저장돼요</Text>
               {isLoadingRegions ? (
                 <View style={styles.regionLoadingBox}>
                   <ActivityIndicator color={MAIN_GREEN} />
@@ -492,22 +440,16 @@ export default function ResidentVerificationScreen({ navigation }) {
                 <>
                   <View style={styles.pickerWrap}>
                     <RegionPickerColumn
-                      title="시·도"
+                      title="광역 시·도"
                       options={sidoOptions}
                       selectedValue={selectedSido}
                       onSelect={setSelectedSido}
                     />
                     <RegionPickerColumn
-                      title="시·군"
-                      options={middleOptions}
-                      selectedValue={selectedMiddle}
-                      onSelect={setSelectedMiddle}
-                    />
-                    <RegionPickerColumn
-                      title="구"
-                      options={lastOptions}
-                      selectedValue={selectedLast}
-                      onSelect={setSelectedLast}
+                      title="기초 시·군"
+                      options={sigunguOptions}
+                      selectedValue={selectedSigungu}
+                      onSelect={setSelectedSigungu}
                     />
                   </View>
                   {selectedRegion && (

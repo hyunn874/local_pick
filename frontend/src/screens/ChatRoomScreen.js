@@ -941,7 +941,7 @@ export default function ChatRoomScreen() {
                     style={styles.formInput}
                     value={placeForm.placeName}
                     onChangeText={(value) => updatePlaceForm('placeName', value)}
-                    placeholder="예: 김명자낙지마당"
+                    placeholder="예: 동네 산책로 전망대"
                     placeholderTextColor="#9B9F98"
                   />
 
@@ -950,7 +950,7 @@ export default function ChatRoomScreen() {
                     style={styles.formInput}
                     value={placeForm.title}
                     onChangeText={(value) => updatePlaceForm('title', value)}
-                    placeholder="예: 동네 주민이 추천하는 낙지 맛집"
+                    placeholder="예: 저녁 노을이 예쁜 산책 명소"
                     placeholderTextColor="#9B9F98"
                   />
 

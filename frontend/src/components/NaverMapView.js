@@ -10,6 +10,7 @@ const NaverMapView = forwardRef(function NaverMapView({
   longitude = 127.3845,
   zoom = 10,
   markers = [],
+  onCameraIdle,
   onMarkerPress,
   style,
 }, ref) {
@@ -32,6 +33,18 @@ const NaverMapView = forwardRef(function NaverMapView({
         isShowScaleBar={false}
         isShowZoomControls
         logoAlign="BottomRight"
+        onCameraIdle={(params) => {
+          const latitudeValue = Number(params?.latitude);
+          const longitudeValue = Number(params?.longitude);
+
+          if (Number.isFinite(latitudeValue) && Number.isFinite(longitudeValue)) {
+            onCameraIdle?.({
+              latitude: latitudeValue,
+              longitude: longitudeValue,
+              zoom: params?.zoom,
+            });
+          }
+        }}
       >
         {visibleMarkers.map((marker) => (
           <NaverMapMarkerOverlay
@@ -40,6 +53,9 @@ const NaverMapView = forwardRef(function NaverMapView({
             longitude={marker.longitude}
             caption={{
               text: marker.title || '',
+            }}
+            subCaption={{
+              text: marker.description || '',
             }}
             image={{
               symbol: 'green',

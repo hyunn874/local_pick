@@ -73,7 +73,14 @@ export default function MainScreen() {
   const shouldShowResidentVerificationBanner =
     isLoggedIn
     && !isGuest
-    && !user?.isResidentVerified;
+    && !user?.isResidentVerified
+    && Number(user?.verifyCount ?? 0) <= 0;
+  const verifyCount = Number(user?.verifyCount ?? 0);
+  const shouldShowSecondVerificationBanner =
+    isLoggedIn
+    && !isGuest
+    && verifyCount === 1
+    && user?.badgeStatus !== 'active';
   const residenceAdoptedPlaces = recentAdoptedPlaces;
   const regionCandidateItems = useMemo(() => {
     if (!regions.length) {
@@ -248,6 +255,21 @@ export default function MainScreen() {
           </View>
         )}
 
+        {shouldShowSecondVerificationBanner && (
+          <View style={[styles.guestBanner, styles.secondVerificationBanner]}>
+            <Text style={styles.guestBannerText} numberOfLines={1}>
+              1차 인증 완료. 배지 활성화를 위해 2차 인증을 진행해주세요
+            </Text>
+            <TouchableOpacity
+              style={styles.guestLoginButton}
+              activeOpacity={0.7}
+              onPress={handleResidentVerificationPress}
+            >
+              <Text style={styles.guestLoginButtonText}>2차 인증하기</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>이 주의 발굴 지역</Text>
           <TouchableOpacity activeOpacity={0.7} onPress={handleNavigateHotLocal}>
@@ -418,6 +440,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 18,
     paddingHorizontal: 12,
+  },
+  secondVerificationBanner: {
+    backgroundColor: ORANGE,
   },
   guestBannerText: {
     color: CARD,

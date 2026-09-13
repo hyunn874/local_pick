@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
@@ -19,6 +19,10 @@ const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const BACKGROUND = '#F8F6F1';
 
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ko-KR'));
+}
+
 export default function RegionSelector({
   selectedRegion = null,
   onSelectRegion = null,
@@ -29,18 +33,32 @@ export default function RegionSelector({
   const [searchText, setSearchText] = useState('');
   const { regions, count, isLoading, error, refetch } = useRegions();
   const normalizedSearchText = searchText.trim().toLowerCase();
+  const sidoOptions = useMemo(() => unique(regions.map((region) => region.sidoName)), [regions]);
+  const [selectedSido, setSelectedSido] = useState(selectedRegion?.sidoName || '');
+
+  const activeSido = selectedSido || selectedRegion?.sidoName || sidoOptions[0] || '';
+  const sigunguRegions = useMemo(
+    () => regions.filter((region) => region.sidoName === activeSido),
+    [activeSido, regions],
+  );
+
+  useEffect(() => {
+    if (selectedRegion?.sidoName && selectedRegion.sidoName !== selectedSido) {
+      setSelectedSido(selectedRegion.sidoName);
+    }
+  }, [selectedRegion?.sidoName, selectedSido]);
 
   const filteredRegions = useMemo(() => {
     if (!normalizedSearchText) {
-      return regions;
+      return sigunguRegions;
     }
 
-    return regions.filter((region) => {
+    return sigunguRegions.filter((region) => {
       const label = `${region.fullName} ${region.regionCode}`.toLowerCase();
 
       return label.includes(normalizedSearchText);
     });
-  }, [normalizedSearchText, regions]);
+  }, [normalizedSearchText, sigunguRegions]);
 
   const selectedLabel = selectedRegion?.fullName || placeholder;
   const metaLabel = selectedRegion?.fullName
@@ -92,6 +110,34 @@ export default function RegionSelector({
 
       {isOpen && (
         <View style={styles.dropdown}>
+          <View style={styles.sidoRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.sidoList}
+            >
+              {sidoOptions.map((sido) => {
+                const isSelected = activeSido === sido;
+
+                return (
+                  <TouchableOpacity
+                    key={sido}
+                    style={[styles.sidoChip, isSelected && styles.selectedSidoChip]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setSelectedSido(sido);
+                      setSearchText('');
+                    }}
+                  >
+                    <Text style={[styles.sidoChipText, isSelected && styles.selectedSidoChipText]}>
+                      {sido}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           <View style={styles.searchBar}>
             <Ionicons name="search" size={17} color={TEXT_SECONDARY} />
             <TextInput
@@ -214,6 +260,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 8,
     padding: 10,
+  },
+  sidoRow: {
+    marginBottom: 10,
+  },
+  sidoList: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  sidoChip: {
+    backgroundColor: BACKGROUND,
+    borderColor: BORDER,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  selectedSidoChip: {
+    backgroundColor: MAIN_GREEN,
+    borderColor: MAIN_GREEN,
+  },
+  sidoChipText: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  selectedSidoChipText: {
+    color: CARD,
   },
   searchBar: {
     alignItems: 'center',

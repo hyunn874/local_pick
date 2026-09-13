@@ -25,7 +25,6 @@ import { fetchRegionByCode } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
-import { useRegions } from '../hooks/useRegions';
 import { generationFilters } from '../mocks/mapMockData';
 import { getBalance, setBalance, useBalance } from '../state/localPassStore';
 import REGION_COORDINATES from '../data/regionCoordinates';
@@ -41,6 +40,11 @@ const { height } = Dimensions.get('window');
 const YUSEONG_CENTER = {
   latitude: 36.3504,
   longitude: 127.3845,
+};
+
+const KOREA_CENTER = {
+  latitude: 36.5,
+  longitude: 127.8,
 };
 
 const SIDO_COORDINATES = {
@@ -116,6 +120,7 @@ function normalizeAdoptedPlace(item, region) {
   const latitude = Number(item.latitude);
   const longitude = Number(item.longitude);
   const adoptionCount = Number(item.adoptionCount ?? item.likes ?? item.likeCount ?? 0);
+  const generation = normalizeGenerationLabel(item.generation || item.ageTag || item.generationTag);
 
   return {
     id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
@@ -124,16 +129,44 @@ function normalizeAdoptedPlace(item, region) {
     title: placeName,
     name: placeName,
     category: item.category || item.categoryTag || '채택 명소',
-    generation: item.generation || item.ageTag || item.generationTag || '전체',
-    passCount: item.passCount || `좋아요 ${adoptionCount}`,
+    generation,
+    passCount: item.passCount || `채택 ${adoptionCount}`,
     latitude: Number.isFinite(latitude) ? latitude : regionCenter.latitude,
     longitude: Number.isFinite(longitude) ? longitude : regionCenter.longitude,
     hasCoordinates: Number.isFinite(latitude) && Number.isFinite(longitude),
     region: item.region || item.regionName || region?.fullName || '선택한 지역',
     likes: adoptionCount,
+    adoptionCount,
     adoptedAt: item.adoptedAt,
     imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
   };
+}
+
+function normalizeGenerationLabel(value) {
+  if (value === 'TWENTIES' || value === '20대') {
+    return '20대';
+  }
+
+  if (value === 'THIRTIES_FORTIES' || value === '30·40대' || value === '30-40대') {
+    return '30-40대';
+  }
+
+  if (value === 'FIFTIES_PLUS' || value === '50대 이상' || value === '50대+') {
+    return '50대+';
+  }
+
+  return '전체';
+}
+
+function getDistanceScore(center, place) {
+  if (!center || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const latitudeGap = center.latitude - place.latitude;
+  const longitudeGap = center.longitude - place.longitude;
+
+  return latitudeGap * latitudeGap + longitudeGap * longitudeGap;
 }
 
 function getUserRegionCode(user) {
@@ -224,6 +257,9 @@ function PlaceBottomSheet({
         <View style={styles.sheetTag}>
           <Text style={styles.sheetTagText}>{place?.generation}</Text>
         </View>
+        <View style={styles.sheetTag}>
+          <Text style={styles.sheetTagText}>채택 {place?.adoptionCount ?? place?.likes ?? 0}</Text>
+        </View>
       </View>
       {showAlternatives && (
         <View style={styles.similarList}>
@@ -286,15 +322,19 @@ export default function MapScreen() {
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [regionRecommendations, setRegionRecommendations] = useState([]);
   const [regionCenterOverride, setRegionCenterOverride] = useState(null);
+  const [mapCenter, setMapCenter] = useState(KOREA_CENTER);
   const [relatedAttractions, setRelatedAttractions] = useState([]);
   const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
   const [attractionError, setAttractionError] = useState(null);
   useBalance();
-  const { regions } = useRegions();
   const userRegionCode = getUserRegionCode(user);
 
   const normalizedSearchText = searchText.trim().toLowerCase();
   const selectedRegionCenter = useMemo(() => {
+    if (!selectedRegion) {
+      return KOREA_CENTER;
+    }
+
     const firstPlace = regionRecommendations[0];
 
     if (firstPlace?.hasCoordinates) {
@@ -308,6 +348,10 @@ export default function MapScreen() {
   }, [regionCenterOverride, regionRecommendations, selectedRegion]);
 
   const selectedMapZoom = useMemo(() => {
+    if (!selectedRegion) {
+      return 6;
+    }
+
     if (regionRecommendations.some((place) => place.hasCoordinates)) {
       return 14;
     }
@@ -321,7 +365,8 @@ export default function MapScreen() {
 
   const filteredRecommendations = useMemo(
     () =>
-      regionRecommendations.filter((place) => {
+      regionRecommendations
+        .filter((place) => {
         const matchesFilter =
           selectedFilter === '전체' || place.generation === selectedFilter;
         const matchesSearch =
@@ -330,45 +375,37 @@ export default function MapScreen() {
           place.category.toLowerCase().includes(normalizedSearchText);
 
         return matchesFilter && matchesSearch;
-      }),
-    [normalizedSearchText, regionRecommendations, selectedFilter],
+      })
+        .sort((a, b) => getDistanceScore(mapCenter, a) - getDistanceScore(mapCenter, b)),
+    [mapCenter, normalizedSearchText, regionRecommendations, selectedFilter],
   );
 
   const filteredMarkers = useMemo(
     () =>
       regionRecommendations
+        .filter((place) => {
+          const matchesFilter =
+            selectedFilter === '전체' || place.generation === selectedFilter;
+          const matchesSearch =
+            !normalizedSearchText ||
+            place.title.toLowerCase().includes(normalizedSearchText) ||
+            place.category.toLowerCase().includes(normalizedSearchText);
+
+          return matchesFilter && matchesSearch;
+        })
         .map((place) => ({
           ...place,
           id: place.id,
           latitude: place.latitude,
           longitude: place.longitude,
           title: place.title,
-        }))
-        .filter((marker) => {
-        const matchesSearch =
-          !normalizedSearchText ||
-          marker.title.toLowerCase().includes(normalizedSearchText) ||
-          marker.category.toLowerCase().includes(normalizedSearchText);
-
-        return matchesSearch;
-      }),
-    [normalizedSearchText, regionRecommendations],
+          description: `${place.title} · 채택 ${place.adoptionCount ?? 0}`,
+        })),
+    [normalizedSearchText, regionRecommendations, selectedFilter],
   );
 
   const hasSearchResults =
     filteredMarkers.length > 0 || filteredRecommendations.length > 0;
-
-  useEffect(() => {
-    if (selectedRegion || regions.length === 0) {
-      return;
-    }
-
-    const userRegion = regions.find((region) => region.regionCode === userRegionCode);
-
-    if (userRegion) {
-      setSelectedRegion(userRegion);
-    }
-  }, [regions, selectedRegion, userRegionCode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -432,6 +469,9 @@ export default function MapScreen() {
       } catch (error) {
         if (isMounted) {
           setRegionRecommendations([]);
+          if (error?.status === 403 || error?.code === 'P003') {
+            Alert.alert('내 지역만 볼 수 있어요', '지도에는 거주자 인증을 완료한 내 지역의 채택 명소만 표시돼요.');
+          }
         }
       }
     }
@@ -455,6 +495,7 @@ export default function MapScreen() {
         zoom: selectedMapZoom,
         duration: 500,
       });
+      setMapCenter(selectedRegionCenter);
     }, 300);
 
     return () => clearTimeout(timeoutId);
@@ -467,6 +508,7 @@ export default function MapScreen() {
     }
 
     setSelectedRegion(region);
+    setMapCenter(resolveRegionCenter(region));
     setRegionRecommendations([]);
     setRegionCenterOverride(null);
     setSelectedPin(null);
@@ -709,6 +751,7 @@ export default function MapScreen() {
             longitude={selectedRegionCenter.longitude}
             zoom={selectedMapZoom}
             markers={filteredMarkers}
+            onCameraIdle={setMapCenter}
             onMarkerPress={handleSelectMarker}
             style={styles.naverMap}
           />
@@ -729,7 +772,13 @@ export default function MapScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.recommendationList}
           >
-            {hasSearchResults ? (
+            {!selectedRegion ? (
+              <View style={styles.emptyRecommendationCard}>
+                <Text style={styles.emptyRecommendationText}>
+                  지역을 선택하면 채택 명소를 볼 수 있어요
+                </Text>
+              </View>
+            ) : hasSearchResults ? (
               filteredRecommendations.map((place) => (
                 <RecommendationCard
                   key={place.id}

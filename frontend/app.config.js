@@ -81,7 +81,9 @@ function readDotEnv() {
 const localEnv = readDotEnv();
 const naverMapClientId =
   process.env.EXPO_PUBLIC_NAVER_MAP_CLIENT_ID ||
+  process.env.NAVER_MAP_CLIENT_ID ||
   localEnv.EXPO_PUBLIC_NAVER_MAP_CLIENT_ID ||
+  localEnv.NAVER_MAP_CLIENT_ID ||
   baseConfig.extra?.naver?.mapClientId ||
   '';
 
