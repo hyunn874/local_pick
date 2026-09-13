@@ -3,6 +3,7 @@ package com.localpick.backend.domain.post;
 import com.localpick.backend.domain.comment.CommentRepository;
 import com.localpick.backend.domain.region.Region;
 import com.localpick.backend.domain.region.RegionRepository;
+import com.localpick.backend.domain.user.GenerationTag;
 import com.localpick.backend.domain.user.User;
 import com.localpick.backend.domain.user.UserRepository;
 import com.localpick.backend.domain.verification.ResidentVerification;
@@ -82,7 +83,7 @@ public class PostService {
                 .placeName(request.placeName())
                 .latitude(request.latitude())
                 .longitude(request.longitude())
-                .generationTag(user.getGenerationTag())
+                .generationTag(user.getGenerationTag() != null ? user.getGenerationTag() : GenerationTag.TWENTIES)
                 .imageUrls(request.imageUrls())
                 .writtenByResident(true)
                 .build();

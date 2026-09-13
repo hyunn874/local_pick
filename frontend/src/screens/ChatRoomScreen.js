@@ -156,6 +156,18 @@ function buildPostTitle(text) {
   return text.length > 50 ? `${text.slice(0, 47)}...` : text;
 }
 
+function getPlaceSubmitErrorMessage(error) {
+  if (error?.code === 'P003' || error?.status === 403) {
+    return '현재 인증된 거주 지역과 명소 등록 지역이 맞는지 확인해주세요.';
+  }
+
+  if (error?.code === 'C001' || error?.status === 400) {
+    return error?.message || '입력한 명소 정보를 다시 확인해주세요.';
+  }
+
+  return error?.message || '잠시 후 다시 시도해주세요.';
+}
+
 function getResidentBadgeInfo(user) {
   const badgeStatus = user?.badgeStatus || (user?.isResidentVerified ? 'active' : 'inactive');
   const verifyCount = Number(user?.verifyCount ?? 0);
@@ -578,28 +590,6 @@ export default function ChatRoomScreen() {
     }
   };
 
-  const uploadImage = async (imageUri) => {
-    if (!imageUri) {
-      return null;
-    }
-
-    try {
-      const formData = new FormData();
-      formData.append('image', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'post-image.jpg',
-      });
-
-      const data = await apiClient.post('/api/posts/image', formData);
-      return data?.imageUrl || data?.url || null;
-    } catch (error) {
-      console.error('이미지 업로드 실패:', error);
-      Alert.alert('안내', '이미지 업로드에 실패했어요. 텍스트만 등록할게요.');
-      return null;
-    }
-  };
-
   const handleSend = async () => {
     if (!isResidentVerified) {
       Alert.alert(
@@ -679,7 +669,6 @@ export default function ChatRoomScreen() {
     setIsSubmittingPlace(true);
 
     const title = placeForm.title.trim() || placeForm.placeName.trim();
-    const uploadedImageUrl = await uploadImage(placeImageUri);
     const requestBody = {
       title: buildPostTitle(title),
       content: [
@@ -691,7 +680,7 @@ export default function ChatRoomScreen() {
       regionCode,
       latitude: regionCenter.latitude,
       longitude: regionCenter.longitude,
-      imageUrls: uploadedImageUrl ? [uploadedImageUrl] : [],
+      imageUrls: [],
     };
 
     try {
@@ -705,7 +694,7 @@ export default function ChatRoomScreen() {
       await loadPosts();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      Alert.alert('등록 실패', error?.message || '잠시 후 다시 시도해주세요.');
+      Alert.alert('등록 실패', getPlaceSubmitErrorMessage(error));
     } finally {
       setIsSubmittingPlace(false);
     }
