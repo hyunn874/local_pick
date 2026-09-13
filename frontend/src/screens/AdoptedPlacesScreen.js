@@ -15,54 +15,6 @@ const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const AGE_FILTERS = ['전체', '20대', '30-40대', '50대+'];
 
-const adoptedPlaceItems = [
-  {
-    id: 'science-road',
-    imageUrl: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee',
-    name: '유성 과학 산책길',
-    region: '대전 유성구',
-    category: '산책',
-    ageTag: '20대',
-    likes: 42,
-  },
-  {
-    id: 'bongmyeong-market',
-    imageUrl: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9',
-    name: '봉명 로컬마켓',
-    region: '대전 유성구',
-    category: '시장',
-    ageTag: '30-40대',
-    likes: 38,
-  },
-  {
-    id: 'gapcheon-sunset',
-    imageUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb',
-    name: '갑천 노을 산책로',
-    region: '대전 유성구',
-    category: '산책',
-    ageTag: '50대+',
-    likes: 35,
-  },
-  {
-    id: 'hidden-cafe',
-    imageUrl: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085',
-    name: '봉명동 숨은 골목 카페',
-    region: '대전 유성구',
-    category: '카페',
-    ageTag: '20대',
-    likes: 31,
-  },
-  {
-    id: 'library-street',
-    imageUrl: null,
-    name: '궁동 책방 거리',
-    region: '대전 유성구',
-    category: '문화',
-    ageTag: '30-40대',
-    likes: 29,
-  },
-];
-
 function getUserRegionCode(user) {
   if (typeof user?.region === 'object') {
     return user.region.regionCode || user.region.code;
@@ -149,7 +101,7 @@ function PlaceCard({ item }) {
 export default function AdoptedPlacesScreen({ navigation }) {
   const { user } = useAuth();
   const [selectedAgeFilter, setSelectedAgeFilter] = useState('전체');
-  const [places, setPlaces] = useState(adoptedPlaceItems);
+  const [places, setPlaces] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const regionCode = getUserRegionCode(user);

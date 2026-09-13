@@ -75,7 +75,7 @@ function getNextVerifyInfo(nextVerifyDate) {
 }
 
 function unique(values) {
-  return Array.from(new Set(values.filter(Boolean)));
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ko-KR'));
 }
 
 function splitSigungu(region) {
@@ -107,6 +107,7 @@ function RegionPickerColumn({ title, options, selectedValue, onSelect }) {
   return (
     <View style={styles.pickerColumn}>
       <Text style={styles.pickerColumnTitle}>{title}</Text>
+      <View style={styles.pickerSelectionGuide} pointerEvents="none" />
       <ScrollView
         style={styles.pickerScroll}
         contentContainerStyle={styles.pickerScrollContent}
@@ -301,7 +302,18 @@ export default function ResidentVerificationScreen({ navigation }) {
       return;
     }
 
-    void loadResidentStatus();
+    Alert.alert(
+      '1차 인증 완료',
+      '이제 해당 지역 소통방을 이용할 수 있어요.',
+      [
+        {
+          text: '소통방으로 이동',
+          onPress: () => {
+            navigation.navigate('AuthGate', { screen: 'ChatRoom' });
+          },
+        },
+      ],
+    );
   }, [confirmedCount, loadResidentStatus, navigation, updateUser, user?.region]);
 
   const handleVerifyLocation = async () => {
@@ -754,6 +766,7 @@ const styles = StyleSheet.create({
   },
   pickerColumn: {
     flex: 1,
+    position: 'relative',
   },
   pickerColumnTitle: {
     color: MAIN_GREEN,
@@ -767,6 +780,18 @@ const styles = StyleSheet.create({
   },
   pickerScrollContent: {
     gap: 6,
+    paddingVertical: 52,
+  },
+  pickerSelectionGuide: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 42,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 82,
   },
   pickerOption: {
     alignItems: 'center',

@@ -164,9 +164,9 @@ function getResidentBadgeInfo(user) {
   if (verifyCount > 0) {
     return {
       isActive: false,
-      hasAccess: false,
+      hasAccess,
       isPressable: true,
-      label: 'GPS 인증 필요',
+      label: hasAccess ? '2차 인증 필요' : 'GPS 인증 필요',
       style: 'renewal',
     };
   }

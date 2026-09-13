@@ -4,7 +4,7 @@ const path = require('path');
 const baseConfig = {
   name: 'LocalPick',
   slug: 'localpick',
-  version: '1.0.1',
+  version: '1.0.2',
   orientation: 'portrait',
   icon: './assets/icon.png',
   splash: {
@@ -17,7 +17,7 @@ const baseConfig = {
     icon: './assets/icon.png',
     supportsTablet: false,
     bundleIdentifier: 'com.localpick.app',
-    buildNumber: '17',
+    buildNumber: '2',
     infoPlist: {
       NSLocationWhenInUseUsageDescription: '거주자 인증을 위해 위치 정보가 필요해요.',
     },

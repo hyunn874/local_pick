@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Dimensions,
@@ -15,14 +15,9 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
-import {
-  adoptedPlaces,
-  candidateRegions,
-  discoveryTags,
-  statusItems,
-} from '../mocks/mainMockData';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -48,6 +43,20 @@ function getAdoptedPlaceRegionName(user) {
   return user?.region?.fullName || user?.district || '서울 은평구';
 }
 
+function getUserRegionCode(user) {
+  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+}
+
+function normalizeAdoptedPlace(place) {
+  return {
+    id: place.postId || place.id,
+    imageUrl: place.imageUrl || place.imageUrls?.[0],
+    name: place.placeName || place.title || '이름 없는 채택 명소',
+    region: place.regionName || '',
+    generation: '채택됨',
+  };
+}
+
 export default function MainScreen() {
   const { exitGuestMode, isGuest, isLoggedIn, user } = useAuth();
   const navigation = useNavigation();
@@ -55,24 +64,23 @@ export default function MainScreen() {
   const refreshTimeoutRef = useRef(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [recentAdoptedPlaces, setRecentAdoptedPlaces] = useState([]);
   const [hasNotification, setHasNotification] = useState(true);
   const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
   const userRegionName = getResidenceName(user);
   const adoptedPlaceRegionName = getAdoptedPlaceRegionName(user);
+  const userRegionCode = getUserRegionCode(user);
   const shouldShowResidentVerificationBanner =
     isLoggedIn
     && !isGuest
-    && (!user?.isResidentVerified || user?.badgeStatus !== 'active');
-  const residenceAdoptedPlaces = useMemo(
-    () =>
-      adoptedPlaces.map((place) => ({
-        ...place,
-        region: adoptedPlaceRegionName,
-      })),
-    [adoptedPlaceRegionName],
-  );
+    && !user?.isResidentVerified;
+  const residenceAdoptedPlaces = recentAdoptedPlaces;
   const regionCandidateItems = useMemo(() => {
-    const candidates = regions
+    if (!regions.length) {
+      return [];
+    }
+
+    return regions
       .filter((region) => region.fullName !== userRegionName)
       .slice(0, 6)
       .map((region, index) => ({
@@ -81,23 +89,29 @@ export default function MainScreen() {
         name: region.fullName,
         rank: `후보 ${index + 1}위`,
       }));
-
-    return candidates.length > 0 ? candidates : candidateRegions;
   }, [regions, userRegionName]);
-  const liveStatusItems = useMemo(
-    () =>
-      statusItems.map((item) => {
-        if (item.label !== '활성 지역') {
-          return item;
-        }
+  const liveStatusItems = useMemo(() => [
+    { label: '채택 명소', value: String(recentAdoptedPlaces.length) },
+    { label: '활성 지역', value: isRegionsLoading ? '...' : '0' },
+    { label: '거주자', value: user?.isResidentVerified ? '1' : '0' },
+  ], [isRegionsLoading, recentAdoptedPlaces.length, user?.isResidentVerified]);
 
-        return {
-          ...item,
-          value: isRegionsLoading ? '...' : String(regions.length || item.value),
-        };
-      }),
-    [isRegionsLoading, regions.length],
-  );
+  const loadRecentAdoptedPlaces = useCallback(async () => {
+    if (!user?.isResidentVerified || !userRegionCode) {
+      setRecentAdoptedPlaces([]);
+      return;
+    }
+
+    try {
+      const data = await apiClient.get('/api/places/adopted', {
+        params: { regionCode: userRegionCode },
+      });
+      const nextPlaces = Array.isArray(data) ? data.map(normalizeAdoptedPlace).slice(0, 3) : [];
+      setRecentAdoptedPlaces(nextPlaces);
+    } catch {
+      setRecentAdoptedPlaces([]);
+    }
+  }, [user?.isResidentVerified, userRegionCode]);
 
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
@@ -115,6 +129,10 @@ export default function MainScreen() {
       }
     };
   }, [cardAnimation]);
+
+  useEffect(() => {
+    void loadRecentAdoptedPlaces();
+  }, [loadRecentAdoptedPlaces]);
 
   const handleNavigateHotLocal = () => {
     navigation.navigate('HotLocalScreen');
@@ -244,14 +262,15 @@ export default function MainScreen() {
             <View style={styles.featureCard}>
               <Text style={styles.featureRegion}>{userRegionName}</Text>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>지금 보기 직전</Text>
+                <Text style={styles.badgeText}>예측 준비 중</Text>
               </View>
               <View style={styles.tagRow}>
-                {discoveryTags.map((tag) => (
-                  <View key={tag} style={styles.featureTag}>
-                    <Text style={styles.featureTagText}>{tag}</Text>
-                  </View>
-                ))}
+                <View style={styles.featureTag}>
+                  <Text style={styles.featureTagText}>수요강도 수집 예정</Text>
+                </View>
+                <View style={styles.featureTag}>
+                  <Text style={styles.featureTagText}>다양성 지표 준비 중</Text>
+                </View>
               </View>
               <TouchableOpacity
                 style={styles.detailButton}
@@ -264,26 +283,34 @@ export default function MainScreen() {
           </Animated.View>
         )}
 
+        {!user?.isResidentVerified && (
         <View style={styles.sectionBlock}>
           <Text style={styles.blockTitle}>다음 발굴 후보 지역</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.candidateList}
-          >
-            {regionCandidateItems.map((region) => (
-              <View key={region.id} style={styles.candidateCard}>
-                <View style={styles.candidateIcon}>
-                  <Text style={styles.candidateIconText}>{region.icon}</Text>
+          {regionCandidateItems.length === 0 ? (
+            <View style={styles.emptyPlaces}>
+              <Text style={styles.emptyPlacesText}>예측 후보 지역을 준비 중이에요</Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.candidateList}
+            >
+              {regionCandidateItems.map((region) => (
+                <View key={region.id} style={styles.candidateCard}>
+                  <View style={styles.candidateIcon}>
+                    <Text style={styles.candidateIconText}>{region.icon}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.candidateName}>{region.name}</Text>
+                    <Text style={styles.candidateRank}>{region.rank}</Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.candidateName}>{region.name}</Text>
-                  <Text style={styles.candidateRank}>{region.rank}</Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
+              ))}
+            </ScrollView>
+          )}
         </View>
+        )}
 
         <View style={styles.statusCard}>
           <Text style={styles.blockTitle}>로컬픽 현황</Text>

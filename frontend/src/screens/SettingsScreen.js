@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Constants from 'expo-constants';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -41,6 +42,7 @@ function MenuRow({
 
 export default function SettingsScreen({ navigation }) {
   const { logout, resetAuthState } = useAuth();
+  const appVersion = Constants.expoConfig?.version || '1.0.2';
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃 하시겠어요?', [
@@ -114,7 +116,7 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => Alert.alert('문의', 'localpick.official@gmail.com')}
         />
         <View style={styles.divider} />
-        <MenuRow label="앱 버전" rightText="1.0.0" showArrow={false} />
+        <MenuRow label="앱 버전" rightText={appVersion} showArrow={false} />
         <View style={styles.divider} />
         <MenuRow label="로그아웃" danger onPress={handleLogout} />
         <View style={styles.divider} />

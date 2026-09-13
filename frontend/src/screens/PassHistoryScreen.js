@@ -4,7 +4,6 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import apiClient from '../api/apiClient';
-import { usageHistory } from '../mocks/localPassMockData';
 
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -31,7 +30,7 @@ function normalizeHistoryResponse(payload) {
 }
 
 export default function PassHistoryScreen({ navigation }) {
-  const [historyItems, setHistoryItems] = useState(usageHistory);
+  const [historyItems, setHistoryItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
