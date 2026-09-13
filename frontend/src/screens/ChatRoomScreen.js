@@ -5,6 +5,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -36,8 +37,15 @@ const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const ORANGE = '#D88A24';
 const GRAY = '#8A918A';
-const AGE_TAGS = ['20대', '30-40대', '50대+'];
 const TARGET_LIKES = 30;
+const PLACE_CATEGORIES = ['음식점', '카페', '산책', '문화', '자연', '기타'];
+const INITIAL_PLACE_FORM = {
+  category: '음식점',
+  placeName: '',
+  title: '',
+  address: '',
+  description: '',
+};
 
 function calculateAdoptionProgress({
   likes = 0,
@@ -70,6 +78,8 @@ function normalizePost(post) {
     commentThreshold,
     shareThreshold,
   });
+  const content = post.content || '';
+  const categoryFromContent = content.match(/\[장소유형\]\s*([^\n]+)/)?.[1]?.trim();
 
   return {
     id: post.id ?? post.postId,
@@ -81,9 +91,9 @@ function normalizePost(post) {
     imageUrl: post.imageUrl || post.image || post.imageUrls?.[0],
     ageTag: post.ageTag || post.generationTag || '전체',
     generationTag: post.generationTag || post.ageTag || '전체',
-    categoryTag: post.categoryTag || post.category || '기타',
+    categoryTag: post.categoryTag || post.category || categoryFromContent || '기타',
     title: post.title || post.content || '제목 없음',
-    content: post.content || '',
+    content,
     progress: Number(post.progress ?? progress),
     likes,
     comments,
@@ -189,6 +199,18 @@ function writeOngoingPick(post) {
   });
 }
 
+function MessageBubble({ item }) {
+  return (
+    <View style={styles.messageBubble}>
+      <View style={styles.messageHeader}>
+        <Text style={styles.messageAuthor}>{item.author}</Text>
+        <Text style={styles.messageTime}>{item.time}</Text>
+      </View>
+      <Text style={styles.messageText}>{item.text}</Text>
+    </View>
+  );
+}
+
 function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
   const imageSource = post.imageUrl || post.image;
   const generationTag = post.generationTag || post.ageTag || '전체';
@@ -271,10 +293,13 @@ export default function ChatRoomScreen() {
   const searchInputRef = useRef(null);
   const refreshTimeoutRef = useRef(null);
   const [posts, setPosts] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [message, setMessage] = useState('');
-  const [selectedAgeTag, setSelectedAgeTag] = useState('전체');
-  const [selectedImageUri, setSelectedImageUri] = useState(null);
+  const [placeImageUri, setPlaceImageUri] = useState(null);
+  const [isPlaceFormVisible, setIsPlaceFormVisible] = useState(false);
+  const [placeForm, setPlaceForm] = useState(INITIAL_PLACE_FORM);
+  const [isSubmittingPlace, setIsSubmittingPlace] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -293,6 +318,7 @@ export default function ChatRoomScreen() {
           .includes(normalizedSearchText),
       )
     : posts;
+  const hasFeedItems = chatMessages.length > 0 || visiblePosts.length > 0;
 
   useEffect(() => {
     return () => {
@@ -532,7 +558,7 @@ export default function ChatRoomScreen() {
     }
   };
 
-  const handlePickImage = async () => {
+  const handlePickPlaceImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
@@ -548,7 +574,7 @@ export default function ChatRoomScreen() {
     });
 
     if (!result.canceled && result.assets?.[0]?.uri) {
-      setSelectedImageUri(result.assets[0].uri);
+      setPlaceImageUri(result.assets[0].uri);
     }
   };
 
@@ -591,31 +617,77 @@ export default function ChatRoomScreen() {
     }
 
     if (isMessageEmpty) {
-      Alert.alert('내용을 입력해주세요', '명소 소개 글을 작성해주세요.');
-      return;
-    }
-
-    if (message.trim().length < 10) {
-      Alert.alert('조금 더 알려주세요', '명소 소개는 10자 이상 입력해주세요.');
-      return;
-    }
-
-    if (!regionCode) {
-      Alert.alert('지역 정보가 필요해요', '거주 지역을 먼저 설정해주세요.');
-      return;
-    }
-
-    if (!regionCenter) {
-      Alert.alert('지역 좌표가 필요해요', '거주 지역 정보를 다시 불러온 뒤 시도해주세요.');
+      Alert.alert('내용을 입력해주세요', '소통방에 남길 메시지를 입력해주세요.');
       return;
     }
 
     const inputText = message.trim();
-    const uploadedImageUrl = await uploadImage(selectedImageUri);
+    setChatMessages((currentMessages) => [
+      {
+        id: `chat-${Date.now()}`,
+        author: user?.nickname || '나',
+        text: inputText,
+        time: '방금 전',
+      },
+      ...currentMessages,
+    ]);
+    setMessage('');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const updatePlaceForm = (key, value) => {
+    setPlaceForm((currentForm) => ({
+      ...currentForm,
+      [key]: value,
+    }));
+  };
+
+  const openPlaceForm = () => {
+    if (!isResidentVerified) {
+      navigation.navigate('ResidentVerification');
+      return;
+    }
+
+    setIsPlaceFormVisible(true);
+  };
+
+  const closePlaceForm = () => {
+    setIsPlaceFormVisible(false);
+  };
+
+  const resetPlaceForm = () => {
+    setPlaceForm(INITIAL_PLACE_FORM);
+    setPlaceImageUri(null);
+  };
+
+  const handleSubmitPlace = async () => {
+    if (!isResidentVerified) {
+      Alert.alert('거주자 인증이 필요해요', 'GPS 위치 확인 후 명소를 등록할 수 있어요.');
+      return;
+    }
+
+    if (!regionCode || !regionCenter) {
+      Alert.alert('지역 정보가 필요해요', '거주 지역 정보를 다시 불러온 뒤 시도해주세요.');
+      return;
+    }
+
+    if (!placeForm.placeName.trim() || !placeForm.address.trim() || !placeForm.description.trim()) {
+      Alert.alert('필수 입력 확인', '장소명, 위치/주소, 추천 이유를 모두 입력해주세요.');
+      return;
+    }
+
+    setIsSubmittingPlace(true);
+
+    const title = placeForm.title.trim() || placeForm.placeName.trim();
+    const uploadedImageUrl = await uploadImage(placeImageUri);
     const requestBody = {
-      title: buildPostTitle(inputText),
-      content: inputText,
-      placeName: buildPostTitle(inputText),
+      title: buildPostTitle(title),
+      content: [
+        `[장소유형] ${placeForm.category}`,
+        `[위치/주소] ${placeForm.address.trim()}`,
+        `[추천 이유] ${placeForm.description.trim()}`,
+      ].join('\n'),
+      placeName: placeForm.placeName.trim(),
       regionCode,
       latitude: regionCenter.latitude,
       longitude: regionCenter.longitude,
@@ -628,12 +700,14 @@ export default function ChatRoomScreen() {
 
       setPosts((currentPosts) => [newPost, ...currentPosts]);
       writeOngoingPick(newPost);
-      setMessage('');
-      setSelectedImageUri(null);
+      resetPlaceForm();
+      closePlaceForm();
       await loadPosts();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       Alert.alert('등록 실패', error?.message || '잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSubmittingPlace(false);
     }
   };
 
@@ -720,7 +794,7 @@ export default function ChatRoomScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.feedContent,
-            visiblePosts.length === 0 && styles.emptyFeedContent,
+            !hasFeedItems && styles.emptyFeedContent,
           ]}
           refreshControl={
             <RefreshControl
@@ -736,7 +810,7 @@ export default function ChatRoomScreen() {
               <ActivityIndicator color={MAIN_GREEN} />
               <Text style={styles.loadingText}>동네 명소를 불러오고 있어요...</Text>
             </View>
-          ) : visiblePosts.length === 0 ? (
+          ) : !hasFeedItems ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>📍</Text>
               <Text style={styles.emptyTitle}>
@@ -756,70 +830,50 @@ export default function ChatRoomScreen() {
               <TouchableOpacity
                 style={styles.emptyButton}
                 activeOpacity={0.7}
-                onPress={handleFocusComposer}
+                onPress={isResidentVerified ? openPlaceForm : handleFocusComposer}
               >
                 <Text style={styles.emptyButtonText}>
-                  {isResidentVerified ? '명소 공유하기' : '거주자 인증하기'}
+                  {isResidentVerified ? '명소 등록하기' : '거주자 인증하기'}
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
-            visiblePosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                onPress={() => handlePostPress(post)}
-                onShare={() => handleShare(post)}
-                onToggleLike={() => handleToggleLike(post.id)}
-                onAdopt={() => handleAdopt(post)}
-              />
-            ))
+            <>
+              {chatMessages.map((chatMessage) => (
+                <MessageBubble key={chatMessage.id} item={chatMessage} />
+              ))}
+              {visiblePosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onPress={() => handlePostPress(post)}
+                  onShare={() => handleShare(post)}
+                  onToggleLike={() => handleToggleLike(post.id)}
+                  onAdopt={() => handleAdopt(post)}
+                />
+              ))}
+            </>
           )}
         </ScrollView>
 
         <View style={styles.composer}>
-          <View style={styles.ageTagRow}>
-            {AGE_TAGS.map((ageTag) => {
-              const isSelected = selectedAgeTag === ageTag;
-
-              return (
-                <TouchableOpacity
-                  key={ageTag}
-                  style={[styles.ageTagButton, isSelected && styles.selectedAgeTagButton]}
-                  activeOpacity={0.7}
-                  onPress={() => setSelectedAgeTag(ageTag)}
-                >
-                  <Text style={[styles.ageTagText, isSelected && styles.selectedAgeTagText]}>
-                    {ageTag}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {selectedImageUri && (
-            <View style={styles.imagePreviewWrap}>
-              <Image
-                source={{ uri: selectedImageUri }}
-                style={styles.imagePreview}
-                contentFit="cover"
-              />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                activeOpacity={0.7}
-                onPress={() => setSelectedImageUri(null)}
-              >
-                <Text style={styles.removeImageButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          <TouchableOpacity
+            style={[styles.templateButton, !isResidentVerified && styles.disabledTemplateButton]}
+            activeOpacity={0.7}
+            onPress={openPlaceForm}
+          >
+            <Ionicons name="location-outline" size={17} color={isResidentVerified ? MAIN_GREEN : GRAY} />
+            <Text style={[styles.templateButtonText, !isResidentVerified && styles.disabledTemplateButtonText]}>
+              명소 등록 템플릿
+            </Text>
+          </TouchableOpacity>
           <View style={styles.composerInputRow}>
             <TouchableOpacity
               style={[styles.attachButton, !isResidentVerified && styles.disabledAttachButton]}
               activeOpacity={0.7}
-              disabled={!isResidentVerified}
-              onPress={handlePickImage}
+              onPress={openPlaceForm}
             >
-              <Ionicons name="camera-outline" size={24} color={MAIN_GREEN} />
+              <Ionicons name="add-outline" size={25} color={isResidentVerified ? MAIN_GREEN : GRAY} />
             </TouchableOpacity>
             <TextInput
               ref={inputRef}
@@ -827,7 +881,7 @@ export default function ChatRoomScreen() {
               value={message}
               onChangeText={setMessage}
               editable={isResidentVerified}
-              placeholder={isResidentVerified ? '내 동네 명소를 공유해보세요...' : '거주자 인증 후 참여할 수 있어요'}
+              placeholder={isResidentVerified ? '동네 이야기를 나눠보세요...' : '거주자 인증 후 참여할 수 있어요'}
               placeholderTextColor="#9B9F98"
             />
             <TouchableOpacity
@@ -840,6 +894,143 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        <Modal
+          visible={isPlaceFormVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={closePlaceForm}
+        >
+          <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              style={styles.placeFormKeyboardAvoidingView}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+              <View style={styles.placeFormModal}>
+                <View style={styles.placeFormHeader}>
+                  <Text style={styles.placeFormTitle}>명소 등록</Text>
+                  <TouchableOpacity
+                    style={styles.placeFormCloseButton}
+                    activeOpacity={0.7}
+                    onPress={closePlaceForm}
+                  >
+                    <Text style={styles.placeFormCloseText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text style={styles.formLabel}>장소 유형</Text>
+                  <View style={styles.categorySelectRow}>
+                    {PLACE_CATEGORIES.map((category) => {
+                      const isSelected = placeForm.category === category;
+
+                      return (
+                        <TouchableOpacity
+                          key={category}
+                          style={[styles.categorySelectButton, isSelected && styles.selectedCategorySelectButton]}
+                          activeOpacity={0.7}
+                          onPress={() => updatePlaceForm('category', category)}
+                        >
+                          <Text
+                            style={[
+                              styles.categorySelectText,
+                              isSelected && styles.selectedCategorySelectText,
+                            ]}
+                          >
+                            {category}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.formLabel}>장소명 *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={placeForm.placeName}
+                    onChangeText={(value) => updatePlaceForm('placeName', value)}
+                    placeholder="예: 김명자낙지마당"
+                    placeholderTextColor="#9B9F98"
+                  />
+
+                  <Text style={styles.formLabel}>게시글 제목</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={placeForm.title}
+                    onChangeText={(value) => updatePlaceForm('title', value)}
+                    placeholder="예: 동네 주민이 추천하는 낙지 맛집"
+                    placeholderTextColor="#9B9F98"
+                  />
+
+                  <Text style={styles.formLabel}>위치/주소 *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={placeForm.address}
+                    onChangeText={(value) => updatePlaceForm('address', value)}
+                    placeholder="도로명 또는 동네 기준 위치"
+                    placeholderTextColor="#9B9F98"
+                  />
+
+                  <Text style={styles.formLabel}>추천 이유 *</Text>
+                  <TextInput
+                    style={[styles.formInput, styles.formTextarea]}
+                    value={placeForm.description}
+                    onChangeText={(value) => updatePlaceForm('description', value)}
+                    placeholder="현지인이 알면 좋은 메뉴, 시간대, 분위기 등을 적어주세요"
+                    placeholderTextColor="#9B9F98"
+                    multiline
+                    textAlignVertical="top"
+                  />
+
+                  {placeImageUri ? (
+                    <View style={styles.placeImagePreviewWrap}>
+                      <Image
+                        source={{ uri: placeImageUri }}
+                        style={styles.placeImagePreview}
+                        contentFit="cover"
+                      />
+                      <TouchableOpacity
+                        style={styles.removeImageButton}
+                        activeOpacity={0.7}
+                        onPress={() => setPlaceImageUri(null)}
+                      >
+                        <Text style={styles.removeImageButtonText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.imagePickButton}
+                      activeOpacity={0.7}
+                      onPress={handlePickPlaceImage}
+                    >
+                      <Ionicons name="camera-outline" size={18} color={MAIN_GREEN} />
+                      <Text style={styles.imagePickButtonText}>사진 첨부</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.submitPlaceButton,
+                      isSubmittingPlace && styles.disabledSubmitPlaceButton,
+                    ]}
+                    activeOpacity={0.7}
+                    disabled={isSubmittingPlace}
+                    onPress={handleSubmitPlace}
+                  >
+                    {isSubmittingPlace ? (
+                      <ActivityIndicator color={CARD} />
+                    ) : (
+                      <Text style={styles.submitPlaceButtonText}>명소 등록하기</Text>
+                    )}
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -959,6 +1150,37 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
     borderRadius: 8,
     padding: 16,
+  },
+  messageBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#E7EFE9',
+    borderRadius: 8,
+    maxWidth: '86%',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  messageHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'space-between',
+    marginBottom: 5,
+  },
+  messageAuthor: {
+    color: MAIN_GREEN,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  messageTime: {
+    color: '#7A9B8A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  messageText: {
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   postHeader: {
     alignItems: 'center',
@@ -1175,31 +1397,158 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 10,
   },
-  ageTagRow: {
+  templateButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E7EFE9',
+    borderRadius: 999,
     flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  disabledTemplateButton: {
+    backgroundColor: '#ECEDEE',
+  },
+  templateButtonText: {
+    color: MAIN_GREEN,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  disabledTemplateButtonText: {
+    color: GRAY,
+  },
+  placeFormKeyboardAvoidingView: {
+    width: '100%',
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  placeFormModal: {
+    backgroundColor: CARD,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    maxHeight: '92%',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
+  placeFormHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  placeFormTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  placeFormCloseButton: {
+    alignItems: 'center',
+    backgroundColor: BACKGROUND,
+    borderRadius: 18,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  placeFormCloseText: {
+    color: TEXT_SECONDARY,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 26,
+  },
+  formLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 12,
+    fontWeight: '900',
+    marginBottom: 7,
+    marginTop: 12,
+  },
+  categorySelectRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
-  ageTagButton: {
-    alignItems: 'center',
+  categorySelectButton: {
     backgroundColor: BACKGROUND,
     borderColor: BORDER,
     borderRadius: 999,
     borderWidth: 1,
-    flex: 1,
-    height: 34,
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  selectedAgeTagButton: {
+  selectedCategorySelectButton: {
     backgroundColor: MAIN_GREEN,
     borderColor: MAIN_GREEN,
   },
-  ageTagText: {
+  categorySelectText: {
     color: TEXT_SECONDARY,
     fontSize: 12,
     fontWeight: '900',
   },
-  selectedAgeTagText: {
+  selectedCategorySelectText: {
     color: CARD,
+  },
+  formInput: {
+    backgroundColor: BACKGROUND,
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: '700',
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+  },
+  formTextarea: {
+    minHeight: 104,
+  },
+  placeImagePreviewWrap: {
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    position: 'relative',
+  },
+  placeImagePreview: {
+    backgroundColor: '#E8F0EB',
+    borderRadius: 8,
+    height: 92,
+    width: 124,
+  },
+  imagePickButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E7EFE9',
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+  imagePickButtonText: {
+    color: MAIN_GREEN,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  submitPlaceButton: {
+    alignItems: 'center',
+    backgroundColor: MAIN_GREEN,
+    borderRadius: 8,
+    height: 52,
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  disabledSubmitPlaceButton: {
+    opacity: 0.7,
+  },
+  submitPlaceButtonText: {
+    color: CARD,
+    fontSize: 15,
+    fontWeight: '900',
   },
   composerInputRow: {
     alignItems: 'center',
