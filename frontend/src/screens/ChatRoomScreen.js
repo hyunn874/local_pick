@@ -39,6 +39,7 @@ const BORDER = '#E5DED4';
 const ORANGE = '#D88A24';
 const GRAY = '#8A918A';
 const TARGET_LIKES = 30;
+const AGE_FILTERS = ['전체', '20대', '30-40대', '50대+'];
 const PLACE_CATEGORIES = ['음식점', '카페', '산책', '문화', '자연', '기타'];
 const INITIAL_PLACE_FORM = {
   category: '음식점',
@@ -47,6 +48,22 @@ const INITIAL_PLACE_FORM = {
   address: '',
   description: '',
 };
+
+function normalizeGenerationLabel(value) {
+  if (value === 'TWENTIES' || value === '20대') {
+    return '20대';
+  }
+
+  if (value === 'THIRTIES_FORTIES' || value === '30·40대' || value === '30-40대') {
+    return '30-40대';
+  }
+
+  if (value === 'FIFTIES_PLUS' || value === '50대 이상' || value === '50대+') {
+    return '50대+';
+  }
+
+  return '전체';
+}
 
 function calculateAdoptionProgress({
   likes = 0,
@@ -81,6 +98,9 @@ function normalizePost(post) {
   });
   const content = post.content || '';
   const categoryFromContent = content.match(/\[장소유형\]\s*([^\n]+)/)?.[1]?.trim();
+  const ageGroup = normalizeGenerationLabel(
+    post.authorAgeGroup || post.ageGroup || post.ageTag || post.generationTag,
+  );
 
   return {
     id: post.id ?? post.postId,
@@ -90,8 +110,9 @@ function normalizePost(post) {
     time: post.time || post.createdAt || '방금 전',
     image: post.image || post.imageUrl || post.imageUrls?.[0],
     imageUrl: post.imageUrl || post.image || post.imageUrls?.[0],
-    ageTag: post.ageTag || post.generationTag || '전체',
-    generationTag: post.generationTag || post.ageTag || '전체',
+    ageTag: ageGroup,
+    authorAgeGroup: ageGroup,
+    generationTag: ageGroup,
     categoryTag: post.categoryTag || post.category || categoryFromContent || '기타',
     title: post.title || post.content || '제목 없음',
     content,
@@ -169,6 +190,50 @@ function getPlaceSubmitErrorMessage(error) {
   return error?.message || '잠시 후 다시 시도해주세요.';
 }
 
+function inferImageType(uri) {
+  const extension = String(uri || '').split('?')[0].split('.').pop()?.toLowerCase();
+
+  if (extension === 'png') {
+    return 'image/png';
+  }
+
+  if (extension === 'webp') {
+    return 'image/webp';
+  }
+
+  if (extension === 'heic') {
+    return 'image/heic';
+  }
+
+  if (extension === 'heif') {
+    return 'image/heif';
+  }
+
+  return 'image/jpeg';
+}
+
+async function uploadPlaceImage(uri) {
+  if (!uri) {
+    return null;
+  }
+
+  const formData = new FormData();
+  const fileType = inferImageType(uri);
+  const extension = fileType.split('/')[1] || 'jpg';
+
+  formData.append('file', {
+    uri,
+    name: `localpick-place-${Date.now()}.${extension === 'jpeg' ? 'jpg' : extension}`,
+    type: fileType,
+  });
+
+  const data = await apiClient.post('/api/images/upload', formData, {
+    timeoutMs: 90000,
+  });
+
+  return data?.imageUrl || data?.url || null;
+}
+
 function getResidentBadgeInfo(user) {
   const badgeStatus = user?.badgeStatus || (user?.isResidentVerified ? 'active' : 'inactive');
   const verifyCount = Number(user?.verifyCount ?? 0);
@@ -226,7 +291,7 @@ function MessageBubble({ item }) {
 
 function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
   const imageSource = post.imageUrl || post.image;
-  const generationTag = post.generationTag || post.ageTag || '전체';
+  const generationTag = post.authorAgeGroup || post.generationTag || post.ageTag || '전체';
   const isLiked = post.likedByMe ?? post.isLiked;
 
   return (
@@ -240,6 +305,9 @@ function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
             <Text style={styles.authorName}>{post.author}</Text>
             <View style={styles.residentBadge}>
               <Text style={styles.residentBadgeText}>거주자</Text>
+            </View>
+            <View style={styles.authorAgeBadge}>
+              <Text style={styles.authorAgeBadgeText}>{generationTag}</Text>
             </View>
           </View>
           <Text style={styles.postTime}>{post.time}</Text>
@@ -316,6 +384,7 @@ export default function ChatRoomScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [selectedAgeFilter, setSelectedAgeFilter] = useState('전체');
   const [authModalConfig, setAuthModalConfig] = useState({
     visible: false,
     message: '',
@@ -328,14 +397,19 @@ export default function ChatRoomScreen() {
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
   const isResidentVerified = residentBadgeInfo.hasAccess;
-  const visiblePosts = normalizedSearchText
-    ? posts.filter((post) =>
-        `${post.title} ${post.content} ${post.categoryTag}`
-          .toLowerCase()
-          .includes(normalizedSearchText),
-      )
-    : posts;
-  const hasFeedItems = chatMessages.length > 0 || visiblePosts.length > 0;
+  const visiblePosts = posts.filter((post) => {
+    const matchesAge =
+      selectedAgeFilter === '전체' || normalizeGenerationLabel(post.authorAgeGroup || post.generationTag) === selectedAgeFilter;
+    const matchesSearch =
+      !normalizedSearchText ||
+      `${post.title} ${post.content} ${post.categoryTag}`
+        .toLowerCase()
+        .includes(normalizedSearchText);
+
+    return matchesAge && matchesSearch;
+  });
+  const visibleChatMessages = selectedAgeFilter === '전체' ? chatMessages : [];
+  const hasFeedItems = visibleChatMessages.length > 0 || visiblePosts.length > 0;
   const closeAuthModal = () => {
     setAuthModalConfig((currentConfig) => ({
       ...currentConfig,
@@ -672,22 +746,22 @@ export default function ChatRoomScreen() {
 
     setIsSubmittingPlace(true);
 
-    const title = placeForm.title.trim() || placeForm.placeName.trim();
-    const requestBody = {
-      title: buildPostTitle(title),
-      content: [
-        `[장소유형] ${placeForm.category}`,
-        `[위치/주소] ${placeForm.address.trim()}`,
-        `[추천 이유] ${placeForm.description.trim()}`,
-      ].join('\n'),
-      placeName: placeForm.placeName.trim(),
-      regionCode,
-      latitude: regionCenter.latitude,
-      longitude: regionCenter.longitude,
-      imageUrls: [],
-    };
-
     try {
+      const uploadedImageUrl = placeImageUri ? await uploadPlaceImage(placeImageUri) : null;
+      const title = placeForm.title.trim() || placeForm.placeName.trim();
+      const requestBody = {
+        title: buildPostTitle(title),
+        content: [
+          `[장소유형] ${placeForm.category}`,
+          `[위치/주소] ${placeForm.address.trim()}`,
+          `[추천 이유] ${placeForm.description.trim()}`,
+        ].join('\n'),
+        placeName: placeForm.placeName.trim(),
+        regionCode,
+        latitude: regionCenter.latitude,
+        longitude: regionCenter.longitude,
+        imageUrls: uploadedImageUrl ? [uploadedImageUrl] : [],
+      };
       const data = await apiClient.post('/api/posts', requestBody);
       const newPost = normalizePost(data?.post || data);
 
@@ -782,6 +856,27 @@ export default function ChatRoomScreen() {
           </View>
         )}
 
+        <View style={styles.ageFilterRow}>
+          {AGE_FILTERS.map((filter) => {
+            const isSelected = selectedAgeFilter === filter;
+
+            return (
+              <TouchableOpacity
+                key={filter}
+                style={[styles.ageFilterButton, isSelected && styles.selectedAgeFilterButton]}
+                activeOpacity={0.7}
+                onPress={() => setSelectedAgeFilter(filter)}
+              >
+                <Text
+                  style={[styles.ageFilterText, isSelected && styles.selectedAgeFilterText]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <ScrollView
           bounces
           keyboardShouldPersistTaps="handled"
@@ -833,7 +928,7 @@ export default function ChatRoomScreen() {
             </View>
           ) : (
             <>
-              {chatMessages.map((chatMessage) => (
+              {visibleChatMessages.map((chatMessage) => (
                 <MessageBubble key={chatMessage.id} item={chatMessage} />
               ))}
               {visiblePosts.map((post) => (
@@ -1143,6 +1238,35 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '900',
   },
+  ageFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  ageFilterButton: {
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderColor: BORDER,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  selectedAgeFilterButton: {
+    backgroundColor: MAIN_GREEN,
+    borderColor: MAIN_GREEN,
+  },
+  ageFilterText: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  selectedAgeFilterText: {
+    color: CARD,
+  },
   feedContent: {
     gap: 14,
     paddingHorizontal: 20,
@@ -1227,6 +1351,17 @@ const styles = StyleSheet.create({
   },
   residentBadgeText: {
     color: MAIN_GREEN,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  authorAgeBadge: {
+    backgroundColor: '#EEF3FA',
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  authorAgeBadgeText: {
+    color: '#2F80ED',
     fontSize: 12,
     fontWeight: '900',
   },

@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 공개
                         .requestMatchers("/", "/actuator/health", "/api/ping").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/uploads/images/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/regions/**").permitAll()
                         .requestMatchers("/api/dev/**").permitAll()   // local 프로파일에서만 빈이 등록됨

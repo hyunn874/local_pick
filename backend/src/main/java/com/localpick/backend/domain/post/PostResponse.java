@@ -2,6 +2,7 @@ package com.localpick.backend.domain.post;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.localpick.backend.domain.user.GenerationTag;
 
 public record PostResponse(
         Long id,
@@ -16,6 +17,7 @@ public record PostResponse(
         String authorNickname,
         String authorProfileImageUrl,
         String generationTag,
+        String authorAgeGroup,
         boolean writtenByResident,
         int likeCount,
         long commentCount,
@@ -33,6 +35,9 @@ public record PostResponse(
 ) {
 
     public static PostResponse from(Post post, long commentCount) {
+        GenerationTag generationTag = post.getGenerationTag() != null
+                ? post.getGenerationTag()
+                : GenerationTag.TWENTIES;
         return new PostResponse(
                 post.getId(),
                 post.getTitle(),
@@ -45,7 +50,10 @@ public record PostResponse(
                 post.getAuthor().getId(),
                 post.getAuthor().getNickname(),
                 post.getAuthor().getProfileImageUrl(),
-                post.getGenerationTag().name(),
+                generationTag.name(),
+                post.getAuthor().getGenerationTag() != null
+                        ? post.getAuthor().getGenerationTag().getLabel()
+                        : generationTag.getLabel(),
                 post.isWrittenByResident(),
                 post.getLikeCount(),
                 commentCount,
