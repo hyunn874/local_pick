@@ -208,6 +208,41 @@ export async function fetchWeeklyHotLocals({ week } = {}) {
   return normalizeHotLocalResponse(payload);
 }
 
+export function normalizeWeeklyTopPredictions(payload) {
+  const source =
+    payload?.weeklyTop ||
+    payload?.regions ||
+    payload?.items ||
+    payload;
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((item, index) => ({
+      id: item.regionCode || item.regionId || String(index),
+      regionCode: item.regionCode,
+      regionName: item.regionName || item.fullName || item.name || '지역명 미정',
+      score: Number(item.score ?? item.totalScore ?? 0),
+      rank: Number(item.rank ?? item.ranking ?? index + 1),
+    }))
+    .filter((item) => item.regionCode || item.regionName);
+}
+
+export async function fetchWeeklyTopPredictions({ week } = {}) {
+  const payload = await requestApi('/api/predictions/weekly-top', {
+    method: 'GET',
+    params: {
+      week,
+    },
+    skipAuth: true,
+    timeoutMs: HOT_LOCAL_TIMEOUT_MS,
+  });
+
+  return normalizeWeeklyTopPredictions(payload);
+}
+
 export async function fetchDevVisitorHotLocals({
   week = DEFAULT_DEV_VISITOR_WEEK,
   limit = DEFAULT_HOT_LOCAL_LIMIT,

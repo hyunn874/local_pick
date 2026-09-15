@@ -15,7 +15,6 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import apiClient from '../api/apiClient';
 import { normalizeHotLocalResponse } from '../api/predictionApi';
 import { useAuth } from '../contexts/AuthContext';
-import { hotLocalData } from '../mocks/hotLocalMockData';
 
 const MAIN_GREEN = '#2D5C44';
 const BACKGROUND = '#F8F6F1';
@@ -120,9 +119,11 @@ export default function HotLocalScreen() {
   const { exitGuestMode, isGuest } = useAuth();
   const fadeAnimation = useSharedValue(0);
   const progressAnimation = useSharedValue(0);
-  const [weeklyHotLocalData, setWeeklyHotLocalData] = useState(hotLocalData);
+  const [weeklyHotLocalData, setWeeklyHotLocalData] = useState({
+    rankOne: null,
+    ranking: [],
+  });
   const [isLoading, setIsLoading] = useState(true);
-  const [isMockData, setIsMockData] = useState(false);
   const [expandedRank, setExpandedRank] = useState(null);
   const rankOne = weeklyHotLocalData.rankOne;
   const visitorProgress = rankOne?.metrics.find((metric) => metric.id === 'visitor')?.progress ?? 0;
@@ -144,7 +145,6 @@ export default function HotLocalScreen() {
 
         if (isMounted && data?.rankOne) {
           setWeeklyHotLocalData(data);
-          setIsMockData(false);
           return;
         }
 
@@ -154,8 +154,10 @@ export default function HotLocalScreen() {
           return;
         }
 
-        setWeeklyHotLocalData(hotLocalData);
-        setIsMockData(true);
+        setWeeklyHotLocalData({
+          rankOne: null,
+          ranking: [],
+        });
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -240,12 +242,6 @@ export default function HotLocalScreen() {
             </Text>
           </View>
         </View>
-
-        {isMockData && (
-          <View style={styles.mockDataBanner}>
-            <Text style={styles.mockDataBannerText}>현재 샘플 데이터를 표시하고 있어요</Text>
-          </View>
-        )}
 
         {isLoading ? (
           <View style={styles.rankOnePlaceholder}>

@@ -2,6 +2,7 @@ package com.localpick.backend.domain.prediction;
 
 import com.localpick.backend.global.response.ApiResponse;
 import java.time.LocalDate;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +30,18 @@ public class PredictionController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate week) {
 
         return ApiResponse.ok(predictionQueryService.findFeatured(week));
+    }
+
+    /**
+     * GET /api/predictions/weekly-top
+     * 홈 화면 "이 주의 발굴 지역 TOP 3" 경량 응답.
+     */
+    @GetMapping("/weekly-top")
+    public ApiResponse<List<WeeklyTopPredictionResponse>> weeklyTop(
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate week) {
+
+        return ApiResponse.ok(predictionQueryService.findWeeklyTop(week));
     }
 
     /**

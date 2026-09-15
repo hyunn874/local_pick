@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import apiClient from '../api/apiClient';
+import { fetchWeeklyTopPredictions } from '../api/predictionApi';
 import { useAuth } from '../contexts/AuthContext';
 import { getRegionLogoSource } from '../data/regionLogoMap';
 import { useRegions } from '../hooks/useRegions';
@@ -62,6 +63,30 @@ function normalizeAdoptedPlace(place) {
   };
 }
 
+const SIDO_NAMES = [
+  '서울특별시',
+  '부산광역시',
+  '대구광역시',
+  '인천광역시',
+  '광주광역시',
+  '대전광역시',
+  '울산광역시',
+  '세종특별자치시',
+  '경기도',
+  '강원특별자치도',
+  '충청북도',
+  '충청남도',
+  '전북특별자치도',
+  '전라남도',
+  '경상북도',
+  '경상남도',
+  '제주특별자치도',
+];
+
+function getSidoName(regionName = '') {
+  return SIDO_NAMES.find((sidoName) => regionName.startsWith(sidoName)) || regionName.split(' ')[0] || '';
+}
+
 export default function MainScreen() {
   const { exitGuestMode, isGuest, isLoggedIn, user } = useAuth();
   const navigation = useNavigation();
@@ -70,8 +95,9 @@ export default function MainScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [recentAdoptedPlaces, setRecentAdoptedPlaces] = useState([]);
+  const [weeklyPredictionRegions, setWeeklyPredictionRegions] = useState([]);
   const [hasNotification, setHasNotification] = useState(true);
-  const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
+  const { isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
   const userRegionName = getResidenceName(user);
   const userRegionCode = getUserRegionCode(user);
   const canViewAdoptedPlaces = hasResidentAccess(user) && Boolean(userRegionCode);
@@ -87,21 +113,22 @@ export default function MainScreen() {
     && verifyCount === 1
     && user?.badgeStatus !== 'active';
   const residenceAdoptedPlaces = recentAdoptedPlaces;
+  const featuredPredictionRegion = weeklyPredictionRegions[0] || null;
   const regionCandidateItems = useMemo(() => {
-    if (!regions.length) {
+    if (!weeklyPredictionRegions.length) {
       return [];
     }
 
-    return regions
-      .filter((region) => region.fullName !== userRegionName)
-      .slice(0, 6)
+    return weeklyPredictionRegions
+      .slice(1, 3)
       .map((region, index) => ({
-        id: region.regionCode || String(region.id),
-        logoSource: getRegionLogoSource(region.sidoName),
-        name: region.fullName,
-        rank: `후보 ${index + 1}위`,
+        id: region.regionCode || String(region.id || index),
+        logoSource: getRegionLogoSource(getSidoName(region.regionName)),
+        name: region.regionName,
+        rank: `RANK ${region.rank || index + 2}`,
+        score: region.score,
       }));
-  }, [regions, userRegionName]);
+  }, [weeklyPredictionRegions]);
   const liveStatusItems = useMemo(() => [
     { label: '채택 명소', value: String(recentAdoptedPlaces.length) },
     { label: '활성 지역', value: isRegionsLoading ? '...' : '0' },
@@ -125,6 +152,15 @@ export default function MainScreen() {
     }
   }, [canViewAdoptedPlaces, userRegionCode]);
 
+  const loadWeeklyPredictions = useCallback(async () => {
+    try {
+      const nextRegions = await fetchWeeklyTopPredictions();
+      setWeeklyPredictionRegions(nextRegions.slice(0, 3));
+    } catch {
+      setWeeklyPredictionRegions([]);
+    }
+  }, []);
+
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
       setIsLoading(false);
@@ -145,6 +181,10 @@ export default function MainScreen() {
   useEffect(() => {
     void loadRecentAdoptedPlaces();
   }, [loadRecentAdoptedPlaces]);
+
+  useEffect(() => {
+    void loadWeeklyPredictions();
+  }, [loadWeeklyPredictions]);
 
   const handleNavigateHotLocal = () => {
     navigation.navigate('HotLocalScreen');
@@ -170,6 +210,8 @@ export default function MainScreen() {
   const handleRefresh = () => {
     setRefreshing(true);
     void refetchRegions();
+    void loadWeeklyPredictions();
+    void loadRecentAdoptedPlaces();
 
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
@@ -291,16 +333,26 @@ export default function MainScreen() {
         ) : (
           <Animated.View style={cardAnimatedStyle}>
             <View style={styles.featureCard}>
-              <Text style={styles.featureRegion}>{userRegionName}</Text>
+              <Text style={styles.featureRegion}>
+                {featuredPredictionRegion?.regionName || '발굴 지역 분석 중'}
+              </Text>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>예측 준비 중</Text>
+                <Text style={styles.badgeText}>
+                  {featuredPredictionRegion ? `RANK ${featuredPredictionRegion.rank}` : '예측 준비 중'}
+                </Text>
               </View>
               <View style={styles.tagRow}>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>수요강도 수집 예정</Text>
+                  <Text style={styles.featureTagText}>
+                    {featuredPredictionRegion
+                      ? `소외도 ${Math.round(featuredPredictionRegion.score || 0)}점`
+                      : '수요강도 분석 중'}
+                  </Text>
                 </View>
                 <View style={styles.featureTag}>
-                  <Text style={styles.featureTagText}>다양성 지표 준비 중</Text>
+                  <Text style={styles.featureTagText}>
+                    {featuredPredictionRegion ? '관광 균등화 우선 지역' : '다양성 지표 분석 중'}
+                  </Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -338,7 +390,9 @@ export default function MainScreen() {
                   </View>
                   <View>
                     <Text style={styles.candidateName}>{region.name}</Text>
-                    <Text style={styles.candidateRank}>{region.rank}</Text>
+                    <Text style={styles.candidateRank}>
+                      {region.rank} · {Math.round(region.score || 0)}점
+                    </Text>
                   </View>
                 </View>
               ))}

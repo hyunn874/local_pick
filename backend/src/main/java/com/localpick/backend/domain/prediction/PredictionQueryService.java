@@ -25,6 +25,20 @@ public class PredictionQueryService {
         return find(week, PredictionResult.FEATURED_COUNT);
     }
 
+    /** 홈 화면에서 바로 쓰는 "이 주의 발굴 지역 TOP 3" 경량 응답. */
+    public List<WeeklyTopPredictionResponse> findWeeklyTop(LocalDate week) {
+        LocalDate target = resolveWeek(week);
+        if (target == null) {
+            return List.of();
+        }
+
+        return predictionResultRepository
+                .findTopWithRegionByWeekStartDate(target, PredictionResult.FEATURED_COUNT)
+                .stream()
+                .map(WeeklyTopPredictionResponse::from)
+                .toList();
+    }
+
     /** 예측 페이지 전체 순위. limit 로 잘라 본다. */
     public PredictionResponse findRanking(LocalDate week, int limit) {
         return find(week, limit);
