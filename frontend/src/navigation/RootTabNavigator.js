@@ -10,6 +10,7 @@ import AllRecommendScreen from '../screens/AllRecommendScreen';
 import ChatRoomScreen from '../screens/ChatRoomScreen';
 import HotLocalScreen from '../screens/HotLocalScreen';
 import LocalPassScreen from '../screens/LocalPassScreen';
+import LocalPickStatusScreen from '../screens/LocalPickStatusScreen';
 import LoginScreen from '../screens/LoginScreen';
 import MainScreen from '../screens/MainScreen';
 import MapScreen from '../screens/MapScreen';
@@ -199,6 +200,7 @@ export default function RootTabNavigator() {
       <Stack.Screen name="Notification" component={NotificationScreen} />
       <Stack.Screen name="PostDetail" component={PostDetailScreen} />
       <Stack.Screen name="AllRecommend" component={AllRecommendScreen} />
+      <Stack.Screen name="LocalPickStatus" component={LocalPickStatusScreen} />
       <Stack.Screen name="PassHistory" component={PassHistoryScreen} />
       <Stack.Screen name="ResidentVerification" component={ResidentVerificationScreen} />
     </Stack.Navigator>

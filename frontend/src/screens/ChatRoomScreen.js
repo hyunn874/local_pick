@@ -23,6 +23,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 
 import apiClient from '../api/apiClient';
+import LocalPickModal from '../components/LocalPickModal';
 import { useAuth } from '../contexts/AuthContext';
 import { getPostCommentCounts } from '../state/postCommentCounts';
 import { getPostLikeCounts } from '../state/postLikeCounts';
@@ -315,6 +316,10 @@ export default function ChatRoomScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [authModalConfig, setAuthModalConfig] = useState({
+    visible: false,
+    message: '',
+  });
   const userRegion = getUserRegion(user);
   const regionName = getResidenceName(user);
   const regionCode = getUserRegionCode(user);
@@ -331,6 +336,22 @@ export default function ChatRoomScreen() {
       )
     : posts;
   const hasFeedItems = chatMessages.length > 0 || visiblePosts.length > 0;
+  const closeAuthModal = () => {
+    setAuthModalConfig((currentConfig) => ({
+      ...currentConfig,
+      visible: false,
+    }));
+  };
+  const showResidentRequiredModal = (messageText) => {
+    setAuthModalConfig({
+      visible: true,
+      message: messageText,
+    });
+  };
+  const navigateToResidentVerification = () => {
+    closeAuthModal();
+    navigation.navigate('ResidentVerification');
+  };
 
   useEffect(() => {
     return () => {
@@ -532,14 +553,7 @@ export default function ChatRoomScreen() {
 
   const handleAdopt = async (post) => {
     if (!isResidentVerified) {
-      Alert.alert(
-        '거주자 인증이 필요해요',
-        '채택 투표는 거주자 인증 후 참여할 수 있어요.',
-        [
-          { text: '취소', style: 'cancel' },
-          { text: '인증하기', onPress: () => navigation.navigate('ResidentVerification') },
-        ],
-      );
+      showResidentRequiredModal('채택 투표는 거주자 인증 후 참여할 수 있어요.');
       return;
     }
 
@@ -592,17 +606,7 @@ export default function ChatRoomScreen() {
 
   const handleSend = async () => {
     if (!isResidentVerified) {
-      Alert.alert(
-        '거주자 인증이 필요해요',
-        'GPS 위치 확인을 완료하면 소통방에 글을 작성할 수 있어요.',
-        [
-          { text: '취소', style: 'cancel' },
-          {
-            text: '인증하기',
-            onPress: () => navigation.navigate('ResidentVerification'),
-          },
-        ],
-      );
+      showResidentRequiredModal('GPS 위치 확인을 완료하면 소통방에 글을 작성할 수 있어요.');
       return;
     }
 
@@ -652,7 +656,7 @@ export default function ChatRoomScreen() {
 
   const handleSubmitPlace = async () => {
     if (!isResidentVerified) {
-      Alert.alert('거주자 인증이 필요해요', 'GPS 위치 확인 후 명소를 등록할 수 있어요.');
+      showResidentRequiredModal('GPS 위치 확인 후 명소를 등록할 수 있어요.');
       return;
     }
 
@@ -715,12 +719,13 @@ export default function ChatRoomScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardAvoidingView}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>{regionName} 소통방</Text>
@@ -1020,8 +1025,20 @@ export default function ChatRoomScreen() {
             </KeyboardAvoidingView>
           </View>
         </Modal>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
+      <LocalPickModal
+        visible={authModalConfig.visible}
+        tone="warning"
+        title="거주자 인증이 필요해요"
+        message={authModalConfig.message}
+        primaryText="인증하기"
+        secondaryText="취소"
+        onPrimaryPress={navigateToResidentVerification}
+        onSecondaryPress={closeAuthModal}
+        onRequestClose={closeAuthModal}
+      />
+    </>
   );
 }
 

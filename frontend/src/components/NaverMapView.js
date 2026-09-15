@@ -1,11 +1,14 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
   NaverMapMarkerOverlay,
   NaverMapView as NativeNaverMapView,
 } from '@mj-studio/react-native-naver-map';
 
+import { getNaverMapClientId, maskNaverMapClientId } from '../config/naverMapConfig';
+
 const NaverMapView = forwardRef(function NaverMapView({
+  clientId,
   latitude = 36.3504,
   longitude = 127.3845,
   zoom = 10,
@@ -14,13 +17,19 @@ const NaverMapView = forwardRef(function NaverMapView({
   onMarkerPress,
   style,
 }, ref) {
+  const configuredClientId = clientId || getNaverMapClientId();
   const visibleMarkers = markers.filter(
     (marker) => Number.isFinite(marker.latitude) && Number.isFinite(marker.longitude),
   );
 
+  useEffect(() => {
+    console.log('[NaverMap] clientId:', maskNaverMapClientId(configuredClientId));
+  }, [configuredClientId]);
+
   return (
     <View style={[styles.container, style]}>
       <NativeNaverMapView
+        key={configuredClientId || 'naver-map-client-id-missing'}
         ref={ref}
         style={styles.map}
         initialCamera={{
@@ -58,8 +67,9 @@ const NaverMapView = forwardRef(function NaverMapView({
               text: marker.description || '',
             }}
             image={{
-              symbol: 'green',
+              symbol: marker.markerSymbol || 'green',
             }}
+            tintColor={marker.markerTintColor}
             onTap={() => onMarkerPress?.(marker)}
           />
         ))}

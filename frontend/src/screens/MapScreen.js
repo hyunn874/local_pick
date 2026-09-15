@@ -24,7 +24,10 @@ import { fetchNearbyAttractions } from '../api/attractionApi';
 import { fetchRegionByCode } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
+import { getNaverMapClientId } from '../config/naverMapConfig';
 import { useAuth } from '../contexts/AuthContext';
+import { findRegionSearchMatch } from '../data/regionSearchMap';
+import { useRegions } from '../hooks/useRegions';
 import { generationFilters } from '../mocks/mapMockData';
 import { getBalance, setBalance, useBalance } from '../state/localPassStore';
 import REGION_COORDINATES from '../data/regionCoordinates';
@@ -36,6 +39,13 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const { height } = Dimensions.get('window');
+
+const GENERATION_MARKER_STYLES = {
+  '20대': { markerSymbol: 'blue', markerTintColor: '#2F80ED' },
+  '30-40대': { markerSymbol: 'green', markerTintColor: MAIN_GREEN },
+  '50대+': { markerSymbol: 'yellow', markerTintColor: '#F28C28' },
+  전체: { markerSymbol: 'gray', markerTintColor: '#7B8179' },
+};
 
 const YUSEONG_CENTER = {
   latitude: 36.3504,
@@ -158,6 +168,10 @@ function normalizeGenerationLabel(value) {
   return '전체';
 }
 
+function getGenerationMarkerStyle(generation) {
+  return GENERATION_MARKER_STYLES[generation] || GENERATION_MARKER_STYLES.전체;
+}
+
 function getDistanceScore(center, place) {
   if (!center || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) {
     return Number.MAX_SAFE_INTEGER;
@@ -169,8 +183,19 @@ function getDistanceScore(center, place) {
   return latitudeGap * latitudeGap + longitudeGap * longitudeGap;
 }
 
-function getUserRegionCode(user) {
-  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+function buildRegionFromSearchMatch(match) {
+  if (!match) {
+    return null;
+  }
+
+  return {
+    regionCode: match.regionCode,
+    sidoName: match.sidoName,
+    sigunguName: match.sigunguName,
+    fullName: match.fullName || `${match.sidoName} ${match.sigunguName}`,
+    centerLatitude: match.latitude,
+    centerLongitude: match.longitude,
+  };
 }
 
 function GenerationFilter({ label, selectedFilter, onPress }) {
@@ -311,10 +336,11 @@ function PlaceBottomSheet({
 }
 
 export default function MapScreen() {
-  const { exitGuestMode, isGuest, user } = useAuth();
+  const { exitGuestMode, isGuest } = useAuth();
   const navigation = useNavigation();
   const sheetAnimation = useSharedValue(0);
   const mapRef = useRef(null);
+  const { regions } = useRegions();
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
   const [selectedPin, setSelectedPin] = useState(null);
@@ -327,9 +353,15 @@ export default function MapScreen() {
   const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
   const [attractionError, setAttractionError] = useState(null);
   useBalance();
-  const userRegionCode = getUserRegionCode(user);
+  const naverMapClientId = getNaverMapClientId();
 
-  const normalizedSearchText = searchText.trim().toLowerCase();
+  const rawSearchText = searchText.trim().toLowerCase();
+  const selectedRegionSearchText = (
+    selectedRegion?.fullName ||
+    `${selectedRegion?.sidoName || ''} ${selectedRegion?.sigunguName || ''}`
+  ).trim().toLowerCase();
+  const normalizedSearchText =
+    rawSearchText && rawSearchText === selectedRegionSearchText ? '' : rawSearchText;
   const selectedRegionCenter = useMemo(() => {
     if (!selectedRegion) {
       return KOREA_CENTER;
@@ -395,6 +427,7 @@ export default function MapScreen() {
         })
         .map((place) => ({
           ...place,
+          ...getGenerationMarkerStyle(place.generation),
           id: place.id,
           latitude: place.latitude,
           longitude: place.longitude,
@@ -502,13 +535,31 @@ export default function MapScreen() {
   }, [selectedMapZoom, selectedRegionCenter]);
 
   const handleSelectRegion = (region) => {
-    if (userRegionCode && region?.regionCode !== userRegionCode) {
-      Alert.alert('내 지역만 볼 수 있어요', '지도에는 거주자 인증을 완료한 내 지역의 채택 명소만 표시돼요.');
+    setSelectedRegion(region);
+    setSearchText(region?.fullName || `${region?.sidoName || ''} ${region?.sigunguName || ''}`.trim());
+    setMapCenter(resolveRegionCenter(region));
+    setRegionRecommendations([]);
+    setRegionCenterOverride(null);
+    setSelectedPin(null);
+    setShowAlternatives(false);
+    setRelatedAttractions([]);
+    setAttractionError(null);
+  };
+
+  const handleSearchTextChange = (value) => {
+    setSearchText(value);
+
+    const matchedRegion = buildRegionFromSearchMatch(
+      findRegionSearchMatch(value, regions),
+    );
+
+    if (!matchedRegion || matchedRegion.regionCode === selectedRegion?.regionCode) {
       return;
     }
 
-    setSelectedRegion(region);
-    setMapCenter(resolveRegionCenter(region));
+    setSearchText(matchedRegion.fullName);
+    setSelectedRegion(matchedRegion);
+    setMapCenter(resolveRegionCenter(matchedRegion));
     setRegionRecommendations([]);
     setRegionCenterOverride(null);
     setSelectedPin(null);
@@ -711,7 +762,7 @@ export default function MapScreen() {
               <TextInput
                 style={styles.searchInput}
                 value={searchText}
-                onChangeText={setSearchText}
+                onChangeText={handleSearchTextChange}
                 placeholder="어디로 여행가세요?"
                 placeholderTextColor="#9B9F98"
               />
@@ -747,6 +798,7 @@ export default function MapScreen() {
         <View style={styles.mapArea}>
           <NaverMapView
             ref={mapRef}
+            clientId={naverMapClientId}
             latitude={selectedRegionCenter.latitude}
             longitude={selectedRegionCenter.longitude}
             zoom={selectedMapZoom}

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -17,6 +16,7 @@ import * as Location from 'expo-location';
 
 import apiClient from '../api/apiClient';
 import { verifyResidentByLocation } from '../api/authApi';
+import LocalPickModal from '../components/LocalPickModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
 
@@ -78,6 +78,10 @@ function unique(values) {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ko-KR'));
 }
 
+function getUserRegionCode(user) {
+  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+}
+
 function RegionPickerColumn({ title, options, selectedValue, onSelect }) {
   return (
     <View style={styles.pickerColumn}>
@@ -126,6 +130,12 @@ export default function ResidentVerificationScreen({ navigation }) {
   });
   const [isCheckingLocation, setIsCheckingLocation] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    visible: false,
+    tone: 'info',
+    title: '',
+    message: '',
+  });
   const sidoOptions = useMemo(() => unique(regions.map((region) => region.sidoName)), [regions]);
   const regionsBySido = useMemo(
     () => regions.filter((region) => region.sidoName === selectedSido),
@@ -150,6 +160,21 @@ export default function ResidentVerificationScreen({ navigation }) {
   const verifyButtonText = isVerifyLocked
     ? `다음 인증 가능일: ${nextVerifyDate}`
     : '지금 위치 인증하기';
+  const verifiedRegionCode = getUserRegionCode(user);
+  const closeModal = useCallback(() => {
+    setModalConfig((currentConfig) => ({
+      ...currentConfig,
+      visible: false,
+    }));
+  }, []);
+  const showModal = useCallback((config) => {
+    setModalConfig({
+      tone: 'info',
+      primaryText: '확인',
+      ...config,
+      visible: true,
+    });
+  }, []);
 
   useEffect(() => {
     if (selectedSido || sidoOptions.length === 0) {
@@ -235,34 +260,51 @@ export default function ResidentVerificationScreen({ navigation }) {
     });
 
     if (verification?.isVerified) {
-      Alert.alert(
-        '인증 완료! 🎉',
-        `거주자 배지가 ${verification?.badgeStatus === 'active' ? '활성화' : '곧 활성화'}됩니다.\n다음 인증일: ${verification?.nextVerifyDate || '추후 안내'}`,
-        [
-          {
-            text: '확인',
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
-        ],
-      );
+      showModal({
+        tone: 'success',
+        title: '인증 완료',
+        message: `거주자 배지가 ${verification?.badgeStatus === 'active' ? '활성화' : '곧 활성화'}됩니다.\n다음 인증일: ${verification?.nextVerifyDate || '추후 안내'}`,
+        primaryText: '확인',
+        onPrimaryPress: () => {
+          closeModal();
+          navigation.goBack();
+        },
+      });
       return;
     }
 
-    Alert.alert(
-      '1차 인증 완료',
-      '이제 해당 지역 소통방을 이용할 수 있어요.',
-      [
-        {
-          text: '소통방으로 이동',
-          onPress: () => {
-            navigation.navigate('AuthGate', { screen: 'ChatRoom' });
-          },
-        },
-      ],
-    );
-  }, [confirmedCount, loadResidentStatus, navigation, updateUser, user?.region]);
+    showModal({
+      tone: 'success',
+      title: '1차 인증 완료',
+      message: '이제 해당 지역 소통방을 이용할 수 있어요.',
+      primaryText: '소통방으로 이동',
+      onPrimaryPress: () => {
+        closeModal();
+        navigation.navigate('AuthGate', { screen: 'ChatRoom' });
+      },
+    });
+  }, [
+    closeModal,
+    confirmedCount,
+    navigation,
+    residentStatus.requiredCount,
+    showModal,
+    updateUser,
+    user?.region,
+  ]);
+
+  const showRegionMismatchModal = useCallback(() => {
+    showModal({
+      tone: 'error',
+      title: '인증 실패',
+      message: '현재 위치와 선택한 지역이 일치하지 않아요.',
+      primaryText: '지역 다시 선택',
+      onPrimaryPress: () => {
+        closeModal();
+        setStep(1);
+      },
+    });
+  }, [closeModal, showModal]);
 
   const handleVerifyLocation = async () => {
     if (isCheckingLocation || isVerifyLocked) {
@@ -270,8 +312,25 @@ export default function ResidentVerificationScreen({ navigation }) {
     }
 
     if (!selectedRegion) {
-      Alert.alert('지역 선택', '거주 지역을 먼저 선택해주세요.');
-      setStep(1);
+      showModal({
+        tone: 'warning',
+        title: '지역 선택',
+        message: '거주 지역을 먼저 선택해주세요.',
+        primaryText: '확인',
+        onPrimaryPress: () => {
+          closeModal();
+          setStep(1);
+        },
+      });
+      return;
+    }
+
+    if (
+      Number(statusVerifyCount || 0) > 0
+      && verifiedRegionCode
+      && selectedRegion.regionCode !== verifiedRegionCode
+    ) {
+      showRegionMismatchModal();
       return;
     }
 
@@ -281,17 +340,18 @@ export default function ResidentVerificationScreen({ navigation }) {
       const { status } = await Location.requestForegroundPermissionsAsync();
 
       if (status !== 'granted') {
-        Alert.alert(
-          '위치 권한 필요',
-          '거주자 인증을 위해 위치 권한이 필요해요.\n설정에서 위치 권한을 허용해주세요.',
-          [
-            { text: '취소', style: 'cancel' },
-            {
-              text: '설정 열기',
-              onPress: () => Linking.openSettings(),
-            },
-          ],
-        );
+        showModal({
+          tone: 'warning',
+          title: '위치 권한 필요',
+          message: '거주자 인증을 위해 위치 권한이 필요해요.\n설정에서 위치 권한을 허용해주세요.',
+          primaryText: '설정 열기',
+          secondaryText: '취소',
+          onPrimaryPress: () => {
+            closeModal();
+            Linking.openSettings();
+          },
+          onSecondaryPress: closeModal,
+        });
         return;
       }
 
@@ -312,41 +372,38 @@ export default function ResidentVerificationScreen({ navigation }) {
         }
 
         if (error?.code === 'A008') {
-          Alert.alert(
-            '거주 지역이 달라요',
-            `선택한 지역은 ${selectedRegion.sidoName} ${selectedRegion.sigunguName}이지만, 현재 GPS 위치가 이 지역으로 확인되지 않았어요.\n실제 거주 지역을 다시 선택한 뒤 현재 위치에서 인증해주세요.`,
-            [
-              {
-                text: '지역 다시 선택',
-                onPress: () => setStep(1),
-              },
-            ],
-          );
+          showRegionMismatchModal();
           return;
         }
 
-        Alert.alert(
-          '위치 확인 실패',
-          '현재 위치의 행정구역을 확인할 수 없어요.\n'
-          + 'Wi-Fi를 켜거나 실제 기기에서 다시 시도해주세요.',
-          [
-            {
-              text: '확인',
-            },
-          ],
-        );
+        showModal({
+          tone: 'error',
+          title: '위치 확인 실패',
+          message: '현재 위치의 행정구역을 확인할 수 없어요.\nWi-Fi를 켜거나 실제 기기에서 다시 시도해주세요.',
+          primaryText: '확인',
+          onPrimaryPress: closeModal,
+        });
         return;
       }
     } catch (error) {
       if (error?.code === 'A007') {
-        Alert.alert(
-          '인증 불가',
-          `아직 인증 기간이 아니에요.\n다음 인증 가능일: ${error?.data?.nextVerifyDate || nextVerifyDate || '확인 필요'}`,
-        );
+        showModal({
+          tone: 'warning',
+          title: '인증 불가',
+          message: `아직 인증 기간이 아니에요.\n다음 인증 가능일: ${error?.data?.nextVerifyDate || nextVerifyDate || '확인 필요'}`,
+          primaryText: '확인',
+          onPrimaryPress: closeModal,
+        });
         return;
       }
 
-      Alert.alert('위치 확인 실패', error?.message || '잠시 후 다시 시도해주세요.');
+      showModal({
+        tone: 'error',
+        title: '위치 확인 실패',
+        message: error?.message || '잠시 후 다시 시도해주세요.',
+        primaryText: '확인',
+        onPrimaryPress: closeModal,
+      });
     } finally {
       setIsCheckingLocation(false);
     }
@@ -502,6 +559,17 @@ export default function ResidentVerificationScreen({ navigation }) {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <LocalPickModal
+        visible={modalConfig.visible}
+        tone={modalConfig.tone}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        primaryText={modalConfig.primaryText}
+        secondaryText={modalConfig.secondaryText}
+        onPrimaryPress={modalConfig.onPrimaryPress}
+        onSecondaryPress={modalConfig.onSecondaryPress}
+        onRequestClose={closeModal}
+      />
     </SafeAreaView>
   );
 }

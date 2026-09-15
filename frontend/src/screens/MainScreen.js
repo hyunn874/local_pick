@@ -17,6 +17,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 
 import apiClient from '../api/apiClient';
 import { useAuth } from '../contexts/AuthContext';
+import { getRegionLogoSource } from '../data/regionLogoMap';
 import { useRegions } from '../hooks/useRegions';
 
 const MAIN_GREEN = '#2D5C44';
@@ -47,6 +48,10 @@ function getUserRegionCode(user) {
   return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
 }
 
+function hasResidentAccess(user) {
+  return Boolean(user?.isResidentVerified || user?.residentAccess || Number(user?.verifyCount ?? 0) > 0);
+}
+
 function normalizeAdoptedPlace(place) {
   return {
     id: place.postId || place.id,
@@ -68,8 +73,8 @@ export default function MainScreen() {
   const [hasNotification, setHasNotification] = useState(true);
   const { regions, isLoading: isRegionsLoading, refetch: refetchRegions } = useRegions();
   const userRegionName = getResidenceName(user);
-  const adoptedPlaceRegionName = getAdoptedPlaceRegionName(user);
   const userRegionCode = getUserRegionCode(user);
+  const canViewAdoptedPlaces = hasResidentAccess(user) && Boolean(userRegionCode);
   const shouldShowResidentVerificationBanner =
     isLoggedIn
     && !isGuest
@@ -92,7 +97,7 @@ export default function MainScreen() {
       .slice(0, 6)
       .map((region, index) => ({
         id: region.regionCode || String(region.id),
-        icon: index % 2 === 0 ? '◇' : '○',
+        logoSource: getRegionLogoSource(region.sidoName),
         name: region.fullName,
         rank: `후보 ${index + 1}위`,
       }));
@@ -100,11 +105,11 @@ export default function MainScreen() {
   const liveStatusItems = useMemo(() => [
     { label: '채택 명소', value: String(recentAdoptedPlaces.length) },
     { label: '활성 지역', value: isRegionsLoading ? '...' : '0' },
-    { label: '거주자', value: user?.isResidentVerified ? '1' : '0' },
-  ], [isRegionsLoading, recentAdoptedPlaces.length, user?.isResidentVerified]);
+    { label: '거주자', value: hasResidentAccess(user) ? '1' : '0' },
+  ], [isRegionsLoading, recentAdoptedPlaces.length, user]);
 
   const loadRecentAdoptedPlaces = useCallback(async () => {
-    if (!user?.isResidentVerified || !userRegionCode) {
+    if (!canViewAdoptedPlaces) {
       setRecentAdoptedPlaces([]);
       return;
     }
@@ -118,7 +123,7 @@ export default function MainScreen() {
     } catch {
       setRecentAdoptedPlaces([]);
     }
-  }, [user?.isResidentVerified, userRegionCode]);
+  }, [canViewAdoptedPlaces, userRegionCode]);
 
   useEffect(() => {
     const loadingTimer = setTimeout(() => {
@@ -147,6 +152,10 @@ export default function MainScreen() {
 
   const handleShowAllPlaces = () => {
     navigation.navigate('AdoptedPlaces');
+  };
+
+  const handleShowLocalPickStatus = () => {
+    navigation.navigate('LocalPickStatus');
   };
 
   const handleShowNotifications = () => {
@@ -321,7 +330,11 @@ export default function MainScreen() {
               {regionCandidateItems.map((region) => (
                 <View key={region.id} style={styles.candidateCard}>
                   <View style={styles.candidateIcon}>
-                    <Text style={styles.candidateIconText}>{region.icon}</Text>
+                    <Image
+                      source={region.logoSource}
+                      style={styles.candidateLogo}
+                      contentFit="contain"
+                    />
                   </View>
                   <View>
                     <Text style={styles.candidateName}>{region.name}</Text>
@@ -334,8 +347,15 @@ export default function MainScreen() {
         </View>
         )}
 
-        <View style={styles.statusCard}>
-          <Text style={styles.blockTitle}>로컬픽 현황</Text>
+        <TouchableOpacity
+          style={styles.statusCard}
+          activeOpacity={0.78}
+          onPress={handleShowLocalPickStatus}
+        >
+          <View style={styles.statusHeaderRow}>
+            <Text style={styles.blockTitle}>로컬픽 현황</Text>
+            <Text style={styles.sectionLink}>자세히 보기 &gt;</Text>
+          </View>
           <View style={styles.statusRow}>
             {liveStatusItems.map((item) => (
               <View key={item.label} style={styles.statusItem}>
@@ -344,7 +364,7 @@ export default function MainScreen() {
               </View>
             ))}
           </View>
-        </View>
+        </TouchableOpacity>
 
         <View style={styles.sectionHeader}>
           <View>
@@ -356,7 +376,18 @@ export default function MainScreen() {
           </TouchableOpacity>
         </View>
 
-        {residenceAdoptedPlaces.length === 0 ? (
+        {!canViewAdoptedPlaces ? (
+          <View style={styles.emptyPlaces}>
+            <Text style={styles.emptyPlacesText}>거주자 인증 후 확인할 수 있어요</Text>
+            <TouchableOpacity
+              style={styles.emptyPlacesButton}
+              activeOpacity={0.7}
+              onPress={handleResidentVerificationPress}
+            >
+              <Text style={styles.emptyPlacesButtonText}>거주자 인증하기 →</Text>
+            </TouchableOpacity>
+          </View>
+        ) : residenceAdoptedPlaces.length === 0 ? (
           <View style={styles.emptyPlaces}>
             <Text style={styles.emptyPlacesText}>아직 채택된 명소가 없어요</Text>
             <TouchableOpacity
@@ -371,12 +402,18 @@ export default function MainScreen() {
           <View style={styles.placeList}>
             {residenceAdoptedPlaces.map((place) => (
               <View key={place.id} style={styles.placeItem}>
-                <Image
-                  source={{ uri: place.imageUrl }}
-                  style={styles.placeImage}
-                  contentFit="cover"
-                  transition={300}
-                />
+                {place.imageUrl ? (
+                  <Image
+                    source={{ uri: place.imageUrl }}
+                    style={styles.placeImage}
+                    contentFit="cover"
+                    transition={300}
+                  />
+                ) : (
+                  <View style={styles.placeImagePlaceholder}>
+                    <Ionicons name="image-outline" size={18} color="#7B8179" />
+                  </View>
+                )}
                 <View style={styles.placeInfo}>
                   <Text style={styles.placeName}>{place.name}</Text>
                   <Text style={styles.placeRegion}>{place.region}</Text>
@@ -593,10 +630,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 42,
   },
-  candidateIconText: {
-    color: MAIN_GREEN,
-    fontSize: 21,
-    fontWeight: '900',
+  candidateLogo: {
+    height: 34,
+    width: 34,
   },
   candidateName: {
     color: '#17251D',
@@ -615,6 +651,11 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     marginTop: 26,
     padding: 18,
+  },
+  statusHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   statusRow: {
     flexDirection: 'row',
@@ -675,6 +716,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F0EB',
     borderRadius: 8,
     height: 40,
+    width: 40,
+  },
+  placeImagePlaceholder: {
+    alignItems: 'center',
+    backgroundColor: '#E8F0EB',
+    borderRadius: 8,
+    height: 40,
+    justifyContent: 'center',
     width: 40,
   },
   placeInfo: {

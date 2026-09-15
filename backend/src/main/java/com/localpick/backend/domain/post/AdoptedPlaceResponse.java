@@ -11,6 +11,7 @@ public record AdoptedPlaceResponse(
         Double longitude,
         int adoptionCount,
         LocalDateTime adoptedAt,
+        String generationTag,
         List<String> imageUrls
 ) {
 
@@ -23,6 +24,7 @@ public record AdoptedPlaceResponse(
                 post.getLongitude(),
                 post.getAdoptionCount(),
                 post.getAdoptedAt(),
+                post.getGenerationTag() != null ? post.getGenerationTag().name() : null,
                 post.getImageUrls() != null ? List.copyOf(post.getImageUrls()) : List.of()
         );
     }
