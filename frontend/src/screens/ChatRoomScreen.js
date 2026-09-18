@@ -380,6 +380,10 @@ export default function ChatRoomScreen() {
   const [placeImageUri, setPlaceImageUri] = useState(null);
   const [isPlaceFormVisible, setIsPlaceFormVisible] = useState(false);
   const [placeForm, setPlaceForm] = useState(INITIAL_PLACE_FORM);
+  const [placeSuggestions, setPlaceSuggestions] = useState([]);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
+  const [placeSearchError, setPlaceSearchError] = useState('');
   const [isSubmittingPlace, setIsSubmittingPlace] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -393,6 +397,7 @@ export default function ChatRoomScreen() {
   const regionName = getResidenceName(user);
   const regionCode = getUserRegionCode(user);
   const regionCenter = getRegionCenter(userRegion);
+  const placeSearchRegion = [userRegion?.sidoName, userRegion?.sigunguName].filter(Boolean).join(' ');
   const residentBadgeInfo = getResidentBadgeInfo(user);
   const normalizedSearchText = searchText.trim().toLowerCase();
   const isMessageEmpty = !message.trim();
@@ -434,6 +439,44 @@ export default function ChatRoomScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const keyword = placeForm.placeName.trim();
+    if (!isPlaceFormVisible || selectedPlace || keyword.length < 2) {
+      setPlaceSuggestions([]);
+      setIsSearchingPlaces(false);
+      setPlaceSearchError('');
+      return undefined;
+    }
+
+    let active = true;
+    setIsSearchingPlaces(true);
+    setPlaceSearchError('');
+    const timeoutId = setTimeout(async () => {
+      try {
+        const results = await apiClient.get('/api/places/search', {
+          params: { keyword, region: placeSearchRegion || undefined },
+        });
+        if (active) {
+          setPlaceSuggestions(Array.isArray(results) ? results : []);
+        }
+      } catch (error) {
+        if (active) {
+          setPlaceSuggestions([]);
+          setPlaceSearchError('장소 검색에 실패했어요. 주소를 직접 입력할 수 있어요.');
+        }
+      } finally {
+        if (active) {
+          setIsSearchingPlaces(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [isPlaceFormVisible, placeForm.placeName, placeSearchRegion, selectedPlace]);
 
   const loadPosts = useCallback(async ({ showLoading = false } = {}) => {
     if (!accessToken || !regionCode || !isResidentVerified) {
@@ -704,10 +747,24 @@ export default function ChatRoomScreen() {
   };
 
   const updatePlaceForm = (key, value) => {
+    if (key === 'placeName' || key === 'address') {
+      setSelectedPlace(null);
+    }
     setPlaceForm((currentForm) => ({
       ...currentForm,
       [key]: value,
     }));
+  };
+
+  const selectPlaceSuggestion = (place) => {
+    setSelectedPlace(place);
+    setPlaceForm((currentForm) => ({
+      ...currentForm,
+      placeName: place.placeName,
+      address: place.roadAddress || place.address,
+    }));
+    setPlaceSuggestions([]);
+    setPlaceSearchError('');
   };
 
   const openPlaceForm = () => {
@@ -726,6 +783,9 @@ export default function ChatRoomScreen() {
   const resetPlaceForm = () => {
     setPlaceForm(INITIAL_PLACE_FORM);
     setPlaceImageUri(null);
+    setSelectedPlace(null);
+    setPlaceSuggestions([]);
+    setPlaceSearchError('');
   };
 
   const handleSubmitPlace = async () => {
@@ -734,7 +794,7 @@ export default function ChatRoomScreen() {
       return;
     }
 
-    if (!regionCode || !regionCenter) {
+    if (!regionCode || (!regionCenter && !selectedPlace)) {
       Alert.alert('지역 정보가 필요해요', '거주 지역 정보를 다시 불러온 뒤 시도해주세요.');
       return;
     }
@@ -758,8 +818,8 @@ export default function ChatRoomScreen() {
         ].join('\n'),
         placeName: placeForm.placeName.trim(),
         regionCode,
-        latitude: regionCenter.latitude,
-        longitude: regionCenter.longitude,
+        latitude: selectedPlace?.latitude ?? regionCenter?.latitude,
+        longitude: selectedPlace?.longitude ?? regionCenter?.longitude,
         imageUrls: uploadedImageUrl ? [uploadedImageUrl] : [],
       };
       const data = await apiClient.post('/api/posts', requestBody);
@@ -1036,15 +1096,6 @@ export default function ChatRoomScreen() {
                     })}
                   </View>
 
-                  <Text style={styles.formLabel}>장소명 *</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={placeForm.placeName}
-                    onChangeText={(value) => updatePlaceForm('placeName', value)}
-                    placeholder="예: 동네 산책로 전망대"
-                    placeholderTextColor="#9B9F98"
-                  />
-
                   <Text style={styles.formLabel}>게시글 제목</Text>
                   <TextInput
                     style={styles.formInput}
@@ -1053,6 +1104,40 @@ export default function ChatRoomScreen() {
                     placeholder="예: 저녁 노을이 예쁜 산책 명소"
                     placeholderTextColor="#9B9F98"
                   />
+
+                  <Text style={styles.formLabel}>장소명 *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={placeForm.placeName}
+                    onChangeText={(value) => updatePlaceForm('placeName', value)}
+                    placeholder="예: 동네 산책로 전망대"
+                    placeholderTextColor="#9B9F98"
+                  />
+                  {!selectedPlace && placeForm.placeName.trim().length >= 2 ? (
+                    <View style={styles.placeSuggestionList}>
+                      {isSearchingPlaces ? (
+                        <ActivityIndicator color={MAIN_GREEN} style={styles.placeSuggestionStatus} />
+                      ) : placeSearchError ? (
+                        <Text style={styles.placeSuggestionStatusText}>{placeSearchError}</Text>
+                      ) : placeSuggestions.length === 0 ? (
+                        <Text style={styles.placeSuggestionStatusText}>검색 결과가 없어요. 주소를 직접 입력할 수 있어요.</Text>
+                      ) : (
+                        placeSuggestions.map((place, index) => (
+                          <TouchableOpacity
+                            key={`${place.placeName}-${place.latitude}-${place.longitude}-${index}`}
+                            style={styles.placeSuggestionItem}
+                            activeOpacity={0.7}
+                            onPress={() => selectPlaceSuggestion(place)}
+                          >
+                            <Text style={styles.placeSuggestionName}>{place.placeName}</Text>
+                            <Text style={styles.placeSuggestionAddress} numberOfLines={1}>
+                              {place.roadAddress || place.address}
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </View>
+                  ) : null}
 
                   <Text style={styles.formLabel}>위치/주소 *</Text>
                   <TextInput
@@ -1642,6 +1727,39 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     fontSize: 14,
     fontWeight: '700',
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+  },
+  placeSuggestionList: {
+    backgroundColor: CARD,
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  placeSuggestionItem: {
+    borderBottomColor: BORDER,
+    borderBottomWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  placeSuggestionName: {
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  placeSuggestionAddress: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  placeSuggestionStatus: {
+    paddingVertical: 12,
+  },
+  placeSuggestionStatusText: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
     paddingHorizontal: 13,
     paddingVertical: 12,
   },

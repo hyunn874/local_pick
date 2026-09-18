@@ -11,6 +11,8 @@
 #   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.onrender.com/api/auth/kakao/callback)
 #   NAVER_MAP_CLIENT_ID     : 네이버 지도 Geocoding / Reverse Geocoding API Key ID
 #   NAVER_MAP_CLIENT_SECRET : 네이버 지도 Geocoding / Reverse Geocoding API Secret
+#   NAVER_LOCAL_SEARCH_CLIENT_ID     : NAVER API HUB 지역 검색 Key ID (Maps 키에 권한이 있으면 생략 가능)
+#   NAVER_LOCAL_SEARCH_CLIENT_SECRET : NAVER API HUB 지역 검색 Secret
 #   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.fly.dev/api/auth/kakao/callback)
 spring:
   main:
