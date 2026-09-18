@@ -914,6 +914,7 @@ export default function MapScreen() {
             )}
           </ScrollView>
         </View>
+        <Text style={styles.sourceText}>출처: ⓒ한국관광공사</Text>
       </ScrollView>
 
       {selectedPin && (
@@ -1076,7 +1077,14 @@ const styles = StyleSheet.create({
   recommendationSection: {
     backgroundColor: BACKGROUND,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 10,
+  },
+  sourceText: {
+    color: '#8A9089',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 20,
+    textAlign: 'center',
   },
   sectionHeader: {
     alignItems: 'center',

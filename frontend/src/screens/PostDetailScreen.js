@@ -568,6 +568,7 @@ export default function PostDetailScreen({ navigation, route }) {
                   ))}
                 </View>
               </View>
+              <Text style={styles.sourceText}>출처: ⓒ한국관광공사</Text>
             </ScrollView>
 
             <View style={styles.actionBar}>
@@ -657,6 +658,13 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     paddingBottom: 28,
+  },
+  sourceText: {
+    color: '#8A9089',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 16,
+    textAlign: 'center',
   },
   card: {
     backgroundColor: CARD,

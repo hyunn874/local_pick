@@ -365,6 +365,7 @@ export default function MainScreen() {
             </View>
           </Animated.View>
         )}
+        <Text style={styles.sourceText}>출처: ⓒ한국관광공사</Text>
 
         {!user?.isResidentVerified && (
         <View style={styles.sectionBlock}>
@@ -493,6 +494,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 32,
+  },
+  sourceText: {
+    color: '#8A9089',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 8,
+    textAlign: 'center',
   },
   header: {
     alignItems: 'center',

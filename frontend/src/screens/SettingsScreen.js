@@ -42,7 +42,7 @@ function MenuRow({
 
 export default function SettingsScreen({ navigation }) {
   const { logout, resetAuthState } = useAuth();
-  const appVersion = Constants.expoConfig?.version || '1.0.2';
+  const appVersion = `v${Constants.expoConfig?.version || '1.0.3'}`;
 
   const handleLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃 하시겠어요?', [
