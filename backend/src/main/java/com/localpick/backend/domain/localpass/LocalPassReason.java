@@ -18,6 +18,7 @@ public enum LocalPassReason {
     FIRST_POST_IN_REGION(30, "발굴 지역 첫 제보"),
     RESIDENT_VERIFIED(20, "거주자 인증 완료"),
     ADOPTION_PARTICIPATED(0, "채택 참여"),
+    PLACE_VIEWED(-1, "명소 열람"),
     REWARD_EXCHANGED(0, "리워드 교환");
 
     /** 기본 적립 금액. 차감 거래는 서비스에서 음수로 변환해 기록한다. */

@@ -48,7 +48,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/regions/**").permitAll()
                         .requestMatchers("/api/dev/**").permitAll()   // local 프로파일에서만 빈이 등록됨
                         // 로컬패스는 개인 정보이므로 인증 필요
-                        .requestMatchers("/api/local-pass/**").authenticated()
+                        .requestMatchers("/api/local-pass/**", "/api/localpass/**").authenticated()
                         // 그 외 조회는 열고, 쓰기는 인증 요구
                         .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
                         .anyRequest().authenticated()

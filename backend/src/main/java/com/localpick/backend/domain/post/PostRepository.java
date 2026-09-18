@@ -16,5 +16,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     /** 지도 핀 표시용 — 채택된 명소만 */
     List<Post> findAllByRegionIdAndAdoptedTrue(Long regionId);
 
+    List<Post> findAllByAdoptedTrue();
+
     long countByRegionId(Long regionId);
 }

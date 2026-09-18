@@ -23,6 +23,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import apiClient from '../api/apiClient';
+import LocalPickModal from '../components/LocalPickModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useRegions } from '../hooks/useRegions';
 import { earningMethods, localPassSummary } from '../mocks/localPassMockData';
@@ -37,10 +38,12 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const CATEGORY_KEYWORDS = [
+  { name: '맛집', words: ['맛집', '식당', '분식', '국밥', '빵', '시장', '순두부'] },
   { name: '카페', words: ['카페', '커피', '디저트'] },
-  { name: '산책', words: ['산책', '길', '공원', '둘레길', '노을'] },
-  { name: '음식', words: ['맛집', '식당', '분식', '국밥', '빵'] },
-  { name: '문화', words: ['전시', '문화', '시장', '골목', '서점'] },
+  { name: '산책로', words: ['산책', '길', '공원', '둘레길', '노을'] },
+  { name: '전망대', words: ['전망', '야경', '팔각정'] },
+  { name: '문화공간', words: ['전시', '문화', '골목', '서점', '공방'] },
+  { name: '체험', words: ['체험', '공방', '클래스'] },
   { name: '자연', words: ['강', '천', '숲', '산', '호수'] },
 ];
 
@@ -64,18 +67,43 @@ function normalizeAdoptedPost(post) {
 
   return {
     id: post.id ?? post.postId,
+    postId: post.postId ?? post.id,
     title: post.title || post.placeName || '채택 명소',
     placeName: post.placeName || post.title || '채택 명소',
     regionName: post.regionName || '지역 정보 없음',
+    regionCode: post.regionCode || '',
     category: post.category || inferCategory(post),
+    address: post.address || post.location || '',
     content: post.content || '',
     latitude: post.latitude,
     longitude: post.longitude,
     likes,
     comments,
     shares,
+    adoptedAt: post.adoptedAt || post.createdAt,
+    imageUrl: post.imageUrl || post.imageUrls?.[0] || null,
     reactionSummary: `좋아요 ${likes}개, 댓글 ${comments}개, 공유 ${shares}회 반응으로 채택된 장소예요.`,
   };
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '방금 전';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getHistoryIcon(reason) {
+  if (reason === 'SIGNUP_BONUS') return '🎉';
+  if (reason === 'ACTIVITY_THRESHOLD') return '⭐';
+  if (reason === 'PLACE_VIEWED' || reason === 'REWARD_EXCHANGED') return '📍';
+  if (reason === 'POST_ADOPTED') return '🏆';
+  return '📋';
 }
 
 function normalizePassBalance(payload) {
@@ -89,8 +117,10 @@ function normalizeHistoryItem(item) {
 
   return {
     id: item.id ?? item.historyId ?? `${item.referenceId || item.placeId || item.placeName}-${item.createdAt || Date.now()}`,
+    reason: item.reason,
+    icon: getHistoryIcon(item.reason),
     place: item.place || item.placeName || item.reasonLabel || '로컬패스 내역',
-    date: item.date || item.usedAt || item.createdAt || '방금 전',
+    date: formatDateTime(item.date || item.usedAt || item.createdAt),
     amount: `${amount > 0 ? '+' : ''}${amount}개`,
   };
 }
@@ -101,8 +131,7 @@ function normalizeHistoryResponse(payload) {
   return Array.isArray(source) ? source.map(normalizeHistoryItem) : [];
 }
 
-function EarningMethodItem({ method, isExpanded, onToggle }) {
-  const isCompleted = method.id === 'signup';
+function EarningMethodItem({ method, isCompleted, isExpanded, onToggle }) {
   const handlePress = () => {
     if (isCompleted) {
       return;
@@ -141,6 +170,7 @@ function EarningMethodItem({ method, isExpanded, onToggle }) {
 function UsageHistoryItem({ item }) {
   return (
     <View style={styles.historyItem}>
+      <Text style={styles.historyIcon}>{item.icon}</Text>
       <View style={styles.historyTextGroup}>
         <Text style={styles.historyPlace}>{item.place}</Text>
         <Text style={styles.historyDate}>{item.date}</Text>
@@ -200,6 +230,18 @@ function AuthenticatedLocalPassScreen() {
   const [revealedPlace, setRevealedPlace] = useState(null);
   const [isLoadingPassPlaces, setIsLoadingPassPlaces] = useState(false);
   const [usageHistoryItems, setUsageHistoryItems] = useState([]);
+  const [viewedPlaces, setViewedPlaces] = useState([]);
+  const [allAdoptedPlaces, setAllAdoptedPlaces] = useState([]);
+  const [passConfirmModal, setPassConfirmModal] = useState({
+    visible: false,
+    place: null,
+  });
+  const [feedbackModal, setFeedbackModal] = useState({
+    visible: false,
+    tone: 'info',
+    title: '',
+    message: '',
+  });
   const [expandedMethodId, setExpandedMethodId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoadingPassData, setIsLoadingPassData] = useState(false);
@@ -213,6 +255,36 @@ function AuthenticatedLocalPassScreen() {
     () => [...regions].sort((a, b) => sortKo(a.fullName, b.fullName)),
     [regions],
   );
+  const adoptedCountByRegion = useMemo(() => {
+    const counts = new Map();
+    allAdoptedPlaces.forEach((place) => {
+      const code = place.regionCode;
+      if (code) {
+        counts.set(code, (counts.get(code) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [allAdoptedPlaces]);
+  const viewedPlacesByRegion = useMemo(() => {
+    const groups = new Map();
+    viewedPlaces.forEach((place) => {
+      const key = place.regionName || '지역 정보 없음';
+      groups.set(key, [...(groups.get(key) || []), place]);
+    });
+    return Array.from(groups.entries());
+  }, [viewedPlaces]);
+  const completedMethodIds = useMemo(() => {
+    const ids = new Set(['signup']);
+    usageHistoryItems.forEach((item) => {
+      if (item.reason === 'ACTIVITY_THRESHOLD') {
+        ids.add('activity');
+      }
+      if (item.reason === 'POST_ADOPTED') {
+        ids.add('picked');
+      }
+    });
+    return ids;
+  }, [usageHistoryItems]);
   const selectedPassRegion = useMemo(
     () => regionOptions.find((region) =>
       (region.regionCode || region.code) === selectedPassRegionCode,
@@ -261,15 +333,25 @@ function AuthenticatedLocalPassScreen() {
     }
 
     try {
-      const [balanceData, historyData] = await Promise.all([
+      const [balanceData, historyData, viewedData, adoptedData] = await Promise.all([
         apiClient.get('/api/local-pass/balance'),
         apiClient.get('/api/local-pass/history'),
+        apiClient.get('/api/localpass/viewed-places'),
+        apiClient.get('/api/places/adopted', { skipAuth: true }),
       ]);
       const nextBalance = normalizePassBalance(balanceData);
       const nextHistory = normalizeHistoryResponse(historyData);
+      const nextViewedPlaces = Array.isArray(viewedData)
+        ? viewedData.map((item) => normalizeAdoptedPost(item.place || item))
+        : [];
+      const nextAdoptedPlaces = Array.isArray(adoptedData)
+        ? adoptedData.map(normalizeAdoptedPost)
+        : [];
 
       setLocalPassBalance(nextBalance);
       setUsageHistoryItems(nextHistory);
+      setViewedPlaces(nextViewedPlaces);
+      setAllAdoptedPlaces(nextAdoptedPlaces);
     } catch (error) {
       setUsageHistoryItems([]);
     } finally {
@@ -304,14 +386,6 @@ function AuthenticatedLocalPassScreen() {
   };
 
   const handleUsePass = () => {
-    if (localPassBalance <= 0) {
-      Alert.alert(
-        '로컬패스 부족',
-        '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
-      );
-      return;
-    }
-
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPassModalStep('region');
     setRevealedPlace(null);
@@ -332,12 +406,13 @@ function AuthenticatedLocalPassScreen() {
     setIsLoadingPassPlaces(true);
 
     try {
-      const data = await apiClient.get('/api/posts', {
-        params: { region: regionCode, size: 100 },
+      const data = await apiClient.get('/api/places/adopted', {
+        params: { regionCode },
+        skipAuth: true,
       });
       const source = Array.isArray(data) ? data : data?.posts;
       const nextPlaces = Array.isArray(source)
-        ? source.filter((post) => post.adopted || post.isAdopted).map(normalizeAdoptedPost)
+        ? source.map(normalizeAdoptedPost)
         : [];
 
       setPassPlaces(nextPlaces);
@@ -353,27 +428,67 @@ function AuthenticatedLocalPassScreen() {
   };
 
   const handleSelectPassPlace = async (place) => {
-    if (localPassBalance <= 0) {
-      Alert.alert('로컬패스 부족', '로컬패스가 없어요.');
+    const userRegionCode = user?.region?.regionCode || user?.region?.code;
+    const isOwnRegion = userRegionCode && place.regionCode === userRegionCode;
+
+    if (isOwnRegion) {
+      setRevealedPlace(place);
+      setPassModalStep('detail');
       return;
     }
 
     try {
-      const data = await apiClient.post('/api/local-pass/use', {
-        amount: 1,
-        reason: 'REWARD_EXCHANGED',
+      const viewedData = await apiClient.get('/api/localpass/viewed', {
+        params: { placeId: Number(place.postId ?? place.id) },
       });
-      const nextHistoryItem = data?.amount !== undefined ? normalizeHistoryItem(data) : null;
+      if (viewedData?.viewed) {
+        setRevealedPlace(place);
+        setPassModalStep('detail');
+        return;
+      }
+    } catch {
+      // 차감 단계에서 한 번 더 확인한다.
+    }
 
-      setLocalPassBalance(Math.max(0, localPassBalance - 1));
-      if (nextHistoryItem) {
-        setUsageHistoryItems((currentItems) => [nextHistoryItem, ...currentItems]);
+    if (localPassBalance <= 0) {
+      setFeedbackModal({
+        visible: true,
+        tone: 'warning',
+        title: '로컬패스가 부족합니다',
+        message: '타지역 명소를 열람하려면 로컬패스가 1개 이상 필요해요.',
+      });
+      return;
+    }
+
+    setPassConfirmModal({ visible: true, place });
+  };
+
+  const confirmUsePassForPlace = async () => {
+    const place = passConfirmModal.place;
+    if (!place) {
+      return;
+    }
+
+    try {
+      const data = await apiClient.post('/api/localpass/use', {
+        placeId: Number(place.postId ?? place.id),
+      });
+
+      if (Number.isFinite(Number(data?.balance))) {
+        setLocalPassBalance(Number(data.balance));
       }
       setRevealedPlace(place);
       setPassModalStep('detail');
+      setPassConfirmModal({ visible: false, place: null });
       void loadLocalPassData();
     } catch (error) {
-      Alert.alert('열람 실패', error?.message || '로컬패스 사용에 실패했어요.');
+      setPassConfirmModal({ visible: false, place: null });
+      setFeedbackModal({
+        visible: true,
+        tone: error?.code === 'L001' ? 'warning' : 'error',
+        title: error?.code === 'L001' ? '로컬패스가 부족합니다' : '열람 실패',
+        message: error?.message || '로컬패스 사용에 실패했어요.',
+      });
     }
   };
 
@@ -489,6 +604,7 @@ function AuthenticatedLocalPassScreen() {
               <EarningMethodItem
                 key={method.id}
                 method={method}
+                isCompleted={completedMethodIds.has(method.id)}
                 isExpanded={expandedMethodId === method.id}
                 onToggle={handleToggleEarningMethod}
               />
@@ -554,6 +670,39 @@ function AuthenticatedLocalPassScreen() {
             ))}
           </View>
         )}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>열람한 명소</Text>
+        </View>
+        {viewedPlacesByRegion.length === 0 ? (
+          <View style={styles.emptyHistory}>
+            <Text style={styles.emptyHistoryIcon}>📍</Text>
+            <Text style={styles.emptyHistoryTitle}>아직 열람한 명소가 없어요</Text>
+          </View>
+        ) : (
+          <View style={styles.viewedGroupList}>
+            {viewedPlacesByRegion.map(([region, places]) => (
+              <View key={region} style={styles.viewedGroup}>
+                <Text style={styles.viewedGroupTitle}>{region} ({places.length})</Text>
+                {places.map((place) => (
+                  <TouchableOpacity
+                    key={`${region}-${place.id}`}
+                    style={styles.viewedPlaceItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setRevealedPlace(place);
+                      setPassModalStep('detail');
+                      setIsPlaceModalVisible(true);
+                    }}
+                  >
+                    <Text style={styles.viewedPlaceName}>{place.placeName}</Text>
+                    <Text style={styles.viewedPlaceMeta}>{place.category} · 좋아요 {place.likes}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
       <Modal
         animationType="fade"
@@ -571,6 +720,8 @@ function AuthenticatedLocalPassScreen() {
                     {regionOptions.map((region) => {
                       const regionCode = region.regionCode || region.code;
                       const isSelected = regionCode === (selectedPassRegion?.regionCode || selectedPassRegion?.code);
+                      const isMyRegion = regionCode === (user?.region?.regionCode || user?.region?.code);
+                      const adoptedCount = adoptedCountByRegion.get(regionCode) || 0;
 
                       return (
                         <TouchableOpacity
@@ -580,7 +731,8 @@ function AuthenticatedLocalPassScreen() {
                           onPress={() => setSelectedPassRegionCode(regionCode)}
                         >
                           <Text style={[styles.regionPickerText, isSelected && styles.selectedRegionPickerText]}>
-                            {region.fullName}
+                            {region.fullName} ({adoptedCount})
+                            {isMyRegion ? ' · 내 지역 — 무료 열람' : ''}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -638,7 +790,7 @@ function AuthenticatedLocalPassScreen() {
             {passModalStep === 'place' && (
               <>
                 <Text style={styles.placeModalTitle}>{selectedCategory} 채택 명소</Text>
-                <Text style={styles.placeModalDescription}>누르면 로컬패스 1개가 차감되고 상세 정보가 열려요.</Text>
+                <Text style={styles.placeModalDescription}>내 지역과 이미 열람한 명소는 차감 없이 열려요.</Text>
                 <View style={styles.placeList}>
                   {filteredPassPlaces.map((place) => (
                     <TouchableOpacity
@@ -649,10 +801,14 @@ function AuthenticatedLocalPassScreen() {
                     >
                       <View style={styles.placeCardTextGroup}>
                         <Text style={styles.placeCardName}>{place.title}</Text>
-                        <Text style={styles.placeCardRegion}>{place.regionName}</Text>
+                        <Text style={styles.placeCardRegion}>
+                          {place.category} · 좋아요 {place.likes} · 댓글 {place.comments} · 공유 {place.shares}
+                        </Text>
                       </View>
                       <View style={styles.placeCategoryTag}>
-                        <Text style={styles.placeCategoryTagText}>1개</Text>
+                        <Text style={styles.placeCategoryTagText}>
+                          {place.regionCode === (user?.region?.regionCode || user?.region?.code) ? '무료' : '1개 사용'}
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   ))}
@@ -665,19 +821,14 @@ function AuthenticatedLocalPassScreen() {
                 <Text style={styles.placeModalTitle}>{revealedPlace.placeName}</Text>
                 <View style={styles.placeDetailBox}>
                   <Text style={styles.placeDetailLabel}>위치</Text>
-                  <Text style={styles.placeDetailText}>{revealedPlace.regionName}</Text>
-                  <Text style={styles.placeDetailLabel}>좌표</Text>
-                  <Text style={styles.placeDetailText}>
-                    {revealedPlace.latitude && revealedPlace.longitude
-                      ? `${revealedPlace.latitude}, ${revealedPlace.longitude}`
-                      : '좌표 정보 없음'}
-                  </Text>
+                  <Text style={styles.placeDetailText}>{revealedPlace.address || revealedPlace.regionName}</Text>
                   <Text style={styles.placeDetailLabel}>주민 반응 요약</Text>
                   <Text style={styles.placeDetailText}>{revealedPlace.reactionSummary}</Text>
                   <Text style={styles.placeDetailLabel}>소개</Text>
                   <Text style={styles.placeDetailText}>
                     {revealedPlace.content || '소통방에서 주민들이 채택한 장소입니다.'}
                   </Text>
+                  <Text style={styles.placeDetailSource}>출처: ⓒ한국관광공사</Text>
                 </View>
               </>
             )}
@@ -692,6 +843,24 @@ function AuthenticatedLocalPassScreen() {
           </View>
         </View>
       </Modal>
+      <LocalPickModal
+        visible={passConfirmModal.visible}
+        tone="info"
+        title="명소 열람"
+        message="이 명소를 열람하시겠습니까? 로컬패스 1개가 차감됩니다."
+        primaryText="예"
+        secondaryText="아니오"
+        onPrimaryPress={confirmUsePassForPlace}
+        onSecondaryPress={() => setPassConfirmModal({ visible: false, place: null })}
+        onRequestClose={() => setPassConfirmModal({ visible: false, place: null })}
+      />
+      <LocalPickModal
+        visible={feedbackModal.visible}
+        tone={feedbackModal.tone}
+        title={feedbackModal.title}
+        message={feedbackModal.message}
+        onRequestClose={() => setFeedbackModal((current) => ({ ...current, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
@@ -1024,6 +1193,10 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
   },
+  historyIcon: {
+    fontSize: 20,
+    width: 26,
+  },
   historyTextGroup: {
     flex: 1,
   },
@@ -1051,6 +1224,36 @@ const styles = StyleSheet.create({
   },
   emptyHistoryIcon: {
     fontSize: 32,
+  },
+  viewedGroupList: {
+    gap: 12,
+  },
+  viewedGroup: {
+    backgroundColor: CARD,
+    borderRadius: 8,
+    padding: 14,
+  },
+  viewedGroupTitle: {
+    color: MAIN_GREEN,
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+  viewedPlaceItem: {
+    borderTopColor: BORDER,
+    borderTopWidth: 1,
+    paddingVertical: 11,
+  },
+  viewedPlaceName: {
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  viewedPlaceMeta: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 4,
   },
   emptyHistoryTitle: {
     color: TEXT_PRIMARY,
@@ -1220,6 +1423,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
+  },
+  placeDetailSource: {
+    color: TEXT_SECONDARY,
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 8,
   },
   modalCancelButton: {
     alignItems: 'center',

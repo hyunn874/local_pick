@@ -121,12 +121,18 @@ public class PostService {
     /** 채택된 명소 목록. imageUrls 가 LAZY 이므로 트랜잭션 안에서 DTO 변환한다. */
     @Transactional(readOnly = true)
     public List<AdoptedPlaceResponse> findAdoptedPlaces(String regionCode) {
-        Region region = regionRepository.findByRegionCode(regionCode)
-                .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
+        List<Post> posts;
+        if (regionCode == null || regionCode.isBlank()) {
+            posts = postRepository.findAllByAdoptedTrue();
+        } else {
+            Region region = regionRepository.findByRegionCode(regionCode)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.REGION_NOT_FOUND));
+            posts = postRepository.findAllByRegionIdAndAdoptedTrue(region.getId());
+        }
 
-        return postRepository.findAllByRegionIdAndAdoptedTrue(region.getId())
+        return posts
                 .stream()
-                .map(AdoptedPlaceResponse::from)
+                .map(post -> AdoptedPlaceResponse.from(post, commentRepository.countByPostId(post.getId())))
                 .toList();
     }
 
@@ -151,7 +157,7 @@ public class PostService {
 
         return postRepository.findAllByRegionIdAndAdoptedTrue(region.getId())
                 .stream()
-                .map(AdoptedPlaceResponse::from)
+                .map(post -> AdoptedPlaceResponse.from(post, commentRepository.countByPostId(post.getId())))
                 .toList();
     }
 

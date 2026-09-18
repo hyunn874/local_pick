@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,8 @@ const CARD = '#FFFFFF';
 const MAIN_GREEN = '#2D5C44';
 const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
+const BORDER = '#E5DED4';
+const CATEGORIES = ['전체', '맛집', '카페', '산책로', '전망대', '문화공간', '체험', '자연'];
 
 function normalizeAdoptedPlace(item, regionName) {
   const postId = item.postId ?? item.id;
@@ -24,13 +26,17 @@ function normalizeAdoptedPlace(item, regionName) {
     placeName,
     category: item.category || item.categoryTag || '채택 명소',
     generation: item.generation || item.ageTag || item.generationTag || '전체',
-    passCount: item.passCount || `좋아요 ${item.adoptionCount ?? item.likes ?? 0}`,
+    passCount: item.passCount || `좋아요 ${item.likeCount ?? item.likes ?? 0} · 댓글 ${item.commentCount ?? 0} · 공유 ${item.shareCount ?? 0}`,
     adoptedAt: item.adoptedAt,
     imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
     latitude: item.latitude,
     longitude: item.longitude,
     region: item.region || item.regionName || regionName,
     likes: Number(item.likes ?? item.likeCount ?? item.adoptionCount ?? 0),
+    comments: Number(item.commentCount ?? item.comments ?? 0),
+    shares: Number(item.shareCount ?? item.shares ?? 0),
+    content: item.content || '',
+    address: item.address || item.location || '',
   };
 }
 
@@ -46,40 +52,39 @@ function createPostFromPlace(place, regionName) {
     generationTag: place.generation,
     categoryTag: place.category,
     title: place.title || place.placeName,
-    content: `${place.placeName || place.title}의 채택된 명소 정보예요.`,
+    content: place.content || `${place.placeName || place.title}의 채택된 명소 정보예요.`,
     progress: 100,
     likes: place.likes ?? 0,
-    comments: 0,
-    location: place.region || regionName,
+    comments: place.comments || 0,
+    shares: place.shares || 0,
+    location: place.address || place.region || regionName,
   };
 }
 
 export default function AllRecommendScreen({ navigation, route }) {
   const selectedRegion = route.params?.region || null;
   const regionCode = selectedRegion?.regionCode || selectedRegion?.code;
-  const regionName = selectedRegion?.fullName || selectedRegion?.name || '선택한 지역';
+  const regionName = selectedRegion?.fullName || selectedRegion?.name || '전국';
   const [places, setPlaces] = useState(recommendedPlaces);
-  const [isLoading, setIsLoading] = useState(Boolean(regionCode));
+  const [selectedCategory, setSelectedCategory] = useState('전체');
+  const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const filteredPlaces = useMemo(
+    () => selectedCategory === '전체'
+      ? places
+      : places.filter((place) => place.category === selectedCategory),
+    [places, selectedCategory],
+  );
 
   const loadAdoptedPlaces = useCallback(async () => {
     let isMounted = true;
-
-    if (!regionCode) {
-      setPlaces([]);
-      setIsLoading(false);
-      setLoadError(null);
-      return () => {
-        isMounted = false;
-      };
-    }
 
     setIsLoading(true);
     setLoadError(null);
 
     try {
       const data = await apiClient.get('/api/places/adopted', {
-        params: { regionCode },
+        params: regionCode ? { regionCode } : undefined,
         skipAuth: true,
       });
       const nextPlaces = Array.isArray(data)
@@ -138,12 +143,7 @@ export default function AllRecommendScreen({ navigation, route }) {
         <Text style={styles.headerTitle}>로컬 추천 전체보기</Text>
         <View style={styles.headerSpacer} />
       </View>
-      {!regionCode ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🗺</Text>
-          <Text style={styles.emptyText}>지역을 선택해주세요</Text>
-        </View>
-      ) : isLoading ? (
+      {isLoading ? (
         <View style={styles.loadingState}>
           <ActivityIndicator color={MAIN_GREEN} />
         </View>
@@ -161,12 +161,34 @@ export default function AllRecommendScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
           )}
+          <View style={styles.categoryRow}>
+            <FlatList
+              horizontal
+              data={CATEGORIES}
+              keyExtractor={(item) => item}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const selected = selectedCategory === item;
+                return (
+                  <TouchableOpacity
+                    style={[styles.categoryChip, selected && styles.selectedCategoryChip]}
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedCategory(item)}
+                  >
+                    <Text style={[styles.categoryChipText, selected && styles.selectedCategoryChipText]}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
           <FlatList
-            data={places}
+            data={filteredPlaces}
             keyExtractor={(item) => String(item.id)}
             contentContainerStyle={[
               styles.listContent,
-              places.length === 0 && styles.emptyListContent,
+              filteredPlaces.length === 0 && styles.emptyListContent,
             ]}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -223,6 +245,32 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 44,
+  },
+  categoryRow: {
+    paddingLeft: 20,
+    paddingVertical: 10,
+  },
+  categoryChip: {
+    alignItems: 'center',
+    borderColor: BORDER,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: 'center',
+    marginRight: 8,
+    paddingHorizontal: 14,
+  },
+  selectedCategoryChip: {
+    backgroundColor: MAIN_GREEN,
+    borderColor: MAIN_GREEN,
+  },
+  categoryChipText: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  selectedCategoryChipText: {
+    color: CARD,
   },
   listContent: {
     flexGrow: 1,

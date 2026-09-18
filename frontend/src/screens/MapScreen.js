@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   ActivityIndicator,
   Dimensions,
   ScrollView,
@@ -23,6 +22,7 @@ import apiClient from '../api/apiClient';
 import { fetchNearbyAttractions } from '../api/attractionApi';
 import { fetchRegionByCode } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
+import LocalPickModal from '../components/LocalPickModal';
 import RegionSelector from '../components/RegionSelector';
 import { getNaverMapClientId } from '../config/naverMapConfig';
 import { useAuth } from '../contexts/AuthContext';
@@ -130,6 +130,9 @@ function normalizeAdoptedPlace(item, region) {
   const latitude = Number(item.latitude);
   const longitude = Number(item.longitude);
   const adoptionCount = Number(item.adoptionCount ?? item.likes ?? item.likeCount ?? 0);
+  const likeCount = Number(item.likeCount ?? item.likes ?? adoptionCount);
+  const commentCount = Number(item.commentCount ?? item.comments ?? 0);
+  const shareCount = Number(item.shareCount ?? item.shares ?? 0);
   const generation = normalizeGenerationLabel(item.generation || item.ageTag || item.generationTag);
 
   return {
@@ -139,13 +142,19 @@ function normalizeAdoptedPlace(item, region) {
     title: placeName,
     name: placeName,
     category: item.category || item.categoryTag || '채택 명소',
+    content: item.content || '',
+    address: item.address || item.location || '',
+    regionCode: item.regionCode || region?.regionCode || region?.code || '',
     generation,
-    passCount: item.passCount || `채택 ${adoptionCount}`,
+    passCount: item.passCount || `좋아요 ${likeCount} · 댓글 ${commentCount} · 공유 ${shareCount}`,
     latitude: Number.isFinite(latitude) ? latitude : regionCenter.latitude,
     longitude: Number.isFinite(longitude) ? longitude : regionCenter.longitude,
     hasCoordinates: Number.isFinite(latitude) && Number.isFinite(longitude),
-    region: item.region || item.regionName || region?.fullName || '선택한 지역',
-    likes: adoptionCount,
+    region: item.region || item.regionName || region?.fullName || '전국',
+    likes: likeCount,
+    comments: commentCount,
+    shares: shareCount,
+    engagementScore: likeCount + commentCount + shareCount,
     adoptionCount,
     adoptedAt: item.adoptedAt,
     imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
@@ -336,7 +345,7 @@ function PlaceBottomSheet({
 }
 
 export default function MapScreen() {
-  const { exitGuestMode, isGuest } = useAuth();
+  const { exitGuestMode, isGuest, user } = useAuth();
   const navigation = useNavigation();
   const sheetAnimation = useSharedValue(0);
   const mapRef = useRef(null);
@@ -352,6 +361,14 @@ export default function MapScreen() {
   const [relatedAttractions, setRelatedAttractions] = useState([]);
   const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
   const [attractionError, setAttractionError] = useState(null);
+  const [passModal, setPassModal] = useState({
+    visible: false,
+    tone: 'info',
+    title: '',
+    message: '',
+    place: null,
+    confirm: false,
+  });
   useBalance();
   const naverMapClientId = getNaverMapClientId();
 
@@ -408,7 +425,8 @@ export default function MapScreen() {
 
         return matchesFilter && matchesSearch;
       })
-        .sort((a, b) => getDistanceScore(mapCenter, a) - getDistanceScore(mapCenter, b)),
+        .sort((a, b) => (b.engagementScore ?? 0) - (a.engagementScore ?? 0))
+        .slice(0, 3),
     [mapCenter, normalizedSearchText, regionRecommendations, selectedFilter],
   );
 
@@ -483,14 +501,10 @@ export default function MapScreen() {
     async function loadRegionRecommendations() {
       const regionCode = selectedRegion?.regionCode;
 
-      if (!regionCode) {
-        setRegionRecommendations([]);
-        return;
-      }
-
       try {
         const data = await apiClient.get('/api/places/adopted', {
-          params: { regionCode },
+          params: regionCode ? { regionCode } : undefined,
+          skipAuth: true,
         });
         const nextRecommendations = Array.isArray(data)
           ? data.map((item) => normalizeAdoptedPlace(item, selectedRegion))
@@ -502,9 +516,6 @@ export default function MapScreen() {
       } catch (error) {
         if (isMounted) {
           setRegionRecommendations([]);
-          if (error?.status === 403 || error?.code === 'P003') {
-            Alert.alert('내 지역만 볼 수 있어요', '지도에는 거주자 인증을 완료한 내 지역의 채택 명소만 표시돼요.');
-          }
         }
       }
     }
@@ -663,72 +674,127 @@ export default function MapScreen() {
     });
   };
 
-  const handleUsePass = () => {
-    if (isGuest) {
-      Alert.alert(
-        '로그인이 필요해요',
-        '로컬패스는 로그인 후 이용할 수 있어요.',
-        [
-          { text: '취소', style: 'cancel' },
-          { text: '로그인하기', onPress: exitGuestMode },
-        ],
-      );
-      return;
-    }
+  const navigateToPlaceDetail = (place) => {
+    const selectedPlaceName = place?.title || place?.name || '선택한 장소';
 
-    if (getBalance() <= 0) {
-      Alert.alert(
-        '로컬패스 부족',
-        '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
-      );
+    setSelectedPin(null);
+    navigation.navigate('PostDetail', {
+      post: {
+        id: place?.postId ?? place?.id,
+        author: place?.region || '지역 거주자',
+        isResident: true,
+        time: place?.adoptedAt || '최근',
+        image: place?.imageUrl || null,
+        imageUrl: place?.imageUrl || null,
+        ageTag: place?.generation || '전체',
+        generationTag: place?.generation || '전체',
+        categoryTag: place?.category || '명소',
+        title: selectedPlaceName,
+        content:
+          place?.content ||
+          `${place?.address ? `${place.address}\n\n` : ''}로컬 거주자가 추천한 채택 명소예요.`,
+        progress: 100,
+        likes: place?.likes || 0,
+        comments: place?.comments || 0,
+        shares: place?.shares || 0,
+        location: place?.address || place?.region || '위치 정보 없음',
+        regionCode: place?.regionCode,
+        regionName: place?.region,
+      },
+    });
+  };
+
+  const usePassAndOpenPlace = async (place) => {
+    try {
+      const data = await apiClient.post('/api/localpass/use', {
+        placeId: Number(place?.postId ?? place?.id),
+      });
+      if (Number.isFinite(Number(data?.balance))) {
+        setBalance(Number(data.balance));
+      }
+      setPassModal((current) => ({ ...current, visible: false, place: null }));
+      navigateToPlaceDetail(place);
+    } catch (error) {
+      setPassModal({
+        visible: true,
+        tone: error?.code === 'L001' ? 'warning' : 'error',
+        title: error?.code === 'L001' ? '로컬패스가 부족합니다' : '열람 실패',
+        message: error?.message || '명소 정보를 열람하지 못했어요.',
+        place: null,
+        confirm: false,
+      });
+    }
+  };
+
+  const handleUsePass = async () => {
+    if (isGuest) {
+      setPassModal({
+        visible: true,
+        tone: 'warning',
+        title: '로그인이 필요해요',
+        message: '로컬패스는 로그인 후 이용할 수 있어요.',
+        place: null,
+        confirm: true,
+      });
       return;
     }
 
     const selectedMarker = selectedPin;
 
     if (!selectedMarker) {
-      Alert.alert(
-        '명소를 선택해주세요',
-        '지도에서 명소를 먼저 선택해주세요.',
-      );
+      setPassModal({
+        visible: true,
+        tone: 'info',
+        title: '명소를 선택해주세요',
+        message: '지도에서 명소를 먼저 선택해주세요.',
+        place: null,
+        confirm: false,
+      });
       return;
     }
 
     const selectedPlaceName = selectedMarker?.title || selectedMarker?.name || '선택한 장소';
+    const userRegionCode = user?.region?.regionCode || user?.region?.code;
+    const isOwnRegion = userRegionCode && selectedMarker?.regionCode === userRegionCode;
 
-    Alert.alert(
-      '로컬패스 사용',
-      `${selectedPlaceName} 상세 정보를 열람하기 위해\n로컬패스 1개를 사용해요.`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '열람하기',
-          onPress: () => {
-            setBalance(getBalance() - 1);
-            setSelectedPin(null);
-            navigation.navigate('PostDetail', {
-              post: {
-                id: selectedMarker?.id,
-                author: selectedMarker?.region || '지역 거주자',
-                isResident: true,
-                time: '최근',
-                image: null,
-                ageTag: selectedMarker?.ageTag || '전체',
-                categoryTag: selectedMarker?.category || '명소',
-                title: selectedPlaceName,
-                content:
-                  selectedMarker?.description ||
-                  '로컬 거주자가 추천한 명소예요. 직접 방문해서 확인해보세요!',
-                progress: 83,
-                likes: selectedMarker?.likes || 24,
-                comments: 2,
-                location: selectedMarker?.region || '대전 유성구',
-              },
-            });
-          },
-        },
-      ],
-    );
+    if (isOwnRegion) {
+      await usePassAndOpenPlace(selectedMarker);
+      return;
+    }
+
+    try {
+      const viewedData = await apiClient.get('/api/localpass/viewed', {
+        params: { placeId: Number(selectedMarker?.postId ?? selectedMarker?.id) },
+      });
+
+      if (viewedData?.viewed) {
+        navigateToPlaceDetail(selectedMarker);
+        return;
+      }
+    } catch {
+      // 조회 실패 시에도 사용 확인 단계에서 최종 검증한다.
+    }
+
+    if (getBalance() <= 0) {
+      setPassModal({
+        visible: true,
+        tone: 'warning',
+        title: '로컬패스가 부족합니다',
+        message: '소통방 활동이나 채택 보상으로 로컬패스를 획득한 뒤 다시 시도해주세요.',
+        place: null,
+        confirm: false,
+      });
+      return;
+    }
+
+    setPassModal({
+      visible: true,
+      tone: 'info',
+      title: '로컬패스 사용',
+      message: `로컬패스 1개를 사용하여\n${selectedPlaceName} 정보를 열람하시겠습니까?`,
+      place: selectedMarker,
+      confirm: true,
+    });
   };
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -863,6 +929,28 @@ export default function MapScreen() {
           onUsePass={handleUsePass}
         />
       )}
+      <LocalPickModal
+        visible={passModal.visible}
+        tone={passModal.tone}
+        title={passModal.title}
+        message={passModal.message}
+        primaryText={passModal.confirm ? '예' : '확인'}
+        secondaryText={passModal.confirm ? '아니오' : undefined}
+        onPrimaryPress={() => {
+          if (passModal.place) {
+            void usePassAndOpenPlace(passModal.place);
+            return;
+          }
+          if (passModal.title === '로그인이 필요해요') {
+            setPassModal((current) => ({ ...current, visible: false }));
+            exitGuestMode();
+            return;
+          }
+          setPassModal((current) => ({ ...current, visible: false }));
+        }}
+        onSecondaryPress={() => setPassModal((current) => ({ ...current, visible: false }))}
+        onRequestClose={() => setPassModal((current) => ({ ...current, visible: false }))}
+      />
     </SafeAreaView>
   );
 }
