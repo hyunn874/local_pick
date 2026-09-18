@@ -24,10 +24,10 @@ class PlaceSearchControllerTest {
 
     @Test
     void searchRouteReturnsPlaceResults() throws Exception {
-        when(service.search("불광천")).thenReturn(List.of(new PlaceSearchResponse(
+        when(service.search("불광천", "은평구")).thenReturn(List.of(new PlaceSearchResponse(
                 "불광천", "서울특별시 은평구", "", 37.6, 126.9)));
 
-        mockMvc.perform(get("/api/places/search").param("keyword", "불광천"))
+        mockMvc.perform(get("/api/places/search").param("keyword", "불광천").param("region", "은평구"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].placeName").value("불광천"))
@@ -36,7 +36,7 @@ class PlaceSearchControllerTest {
 
     @Test
     void blankKeywordReturnsInvalidInput() throws Exception {
-        when(service.search("")).thenThrow(new BusinessException(ErrorCode.INVALID_INPUT));
+        when(service.search("", null)).thenThrow(new BusinessException(ErrorCode.INVALID_INPUT));
 
         mockMvc.perform(get("/api/places/search").param("keyword", ""))
                 .andExpect(status().isBadRequest())

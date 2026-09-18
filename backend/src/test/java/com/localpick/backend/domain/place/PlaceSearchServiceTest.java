@@ -8,45 +8,47 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.localpick.backend.global.exception.BusinessException;
 import com.localpick.backend.global.exception.ErrorCode;
-import com.localpick.backend.infra.external.naver.NaverGeocodingClient;
+import com.localpick.backend.infra.external.naver.NaverLocalSearchClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 class PlaceSearchServiceTest {
 
-    private final NaverGeocodingClient client = Mockito.mock(NaverGeocodingClient.class);
+    private final NaverLocalSearchClient client = Mockito.mock(NaverLocalSearchClient.class);
     private final PlaceSearchService service = new PlaceSearchService(client);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void mapsBuildingNameAddressesAndCoordinates() throws Exception {
-        when(client.search("주스공장")).thenReturn(objectMapper.readTree("""
+    void mapsLocalSearchResultAndCoordinates() throws Exception {
+        when(client.search("은평구 주스공장")).thenReturn(objectMapper.readTree("""
                 {
-                  "addresses": [{
-                    "jibunAddress": "서울특별시 은평구 응암동 1길 1",
+                  "items": [{
+                    "title": "<b>주스</b>&amp;공장",
+                    "address": "서울특별시 은평구 응암동 1길 1",
                     "roadAddress": "서울특별시 은평구 응암로 1",
-                    "x": "126.456",
-                    "y": "37.123",
-                    "addressElements": [{"types": ["BUILDING_NAME"], "longName": "주스공장"}]
+                    "mapx": "1264560000",
+                    "mapy": "371230000"
                   }]
                 }
                 """));
 
         assertEquals(List.of(new PlaceSearchResponse(
-                "주스공장", "서울특별시 은평구 응암동 1길 1", "서울특별시 은평구 응암로 1",
-                37.123, 126.456)), service.search(" 주스공장 "));
+                "주스&공장", "서울특별시 은평구 응암동 1길 1", "서울특별시 은평구 응암로 1",
+                37.123, 126.456)), service.search(" 주스공장 ", "은평구"));
     }
 
     @Test
-    void fallsBackToKeywordWhenBuildingNameIsMissing() throws Exception {
-        when(client.search("응암로 1")).thenReturn(objectMapper.readTree("""
-                {"addresses": [{"jibunAddress": "응암동 1", "roadAddress": "응암로 1",
-                "x": "126.456", "y": "37.123",
-                "addressElements": [{"types": ["ROAD_NAME"], "longName": "응암로"}]}]}
+    void acceptsDecimalCoordinatesAndSkipsUnlocatedItems() throws Exception {
+        when(client.search("오산 맛집")).thenReturn(objectMapper.readTree("""
+                {"items": [
+                  {"title": "맛집", "address": "오산시", "mapx": "126.456", "mapy": "37.123"},
+                  {"title": "좌표없음", "address": "오산시", "mapx": "", "mapy": ""}
+                ]}
                 """));
 
-        assertEquals("응암로 1", service.search("응암로 1").getFirst().placeName());
+        assertEquals(1, service.search("맛집", "오산").size());
+        assertEquals("맛집", service.search("맛집", "오산").getFirst().placeName());
     }
 
     @Test

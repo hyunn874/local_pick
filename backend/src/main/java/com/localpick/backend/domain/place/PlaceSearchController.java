@@ -16,7 +16,9 @@ public class PlaceSearchController {
     private final PlaceSearchService placeSearchService;
 
     @GetMapping("/search")
-    public ApiResponse<List<PlaceSearchResponse>> search(@RequestParam(defaultValue = "") String keyword) {
-        return ApiResponse.ok(placeSearchService.search(keyword));
+    public ApiResponse<List<PlaceSearchResponse>> search(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) String region) {
+        return ApiResponse.ok(placeSearchService.search(keyword, region));
     }
 }
