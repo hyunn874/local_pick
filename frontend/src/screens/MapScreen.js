@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Dimensions,
   ScrollView,
@@ -20,13 +21,10 @@ import Animated, {
 
 import apiClient from '../api/apiClient';
 import { fetchNearbyAttractions } from '../api/attractionApi';
-import { fetchRegionByCode } from '../api/regionApi';
+import { fetchRegionByCode, searchRegionByName } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
-import LocalPickModal from '../components/LocalPickModal';
 import RegionSelector from '../components/RegionSelector';
-import { getNaverMapClientId } from '../config/naverMapConfig';
 import { useAuth } from '../contexts/AuthContext';
-import { findRegionSearchMatch } from '../data/regionSearchMap';
 import { useRegions } from '../hooks/useRegions';
 import { generationFilters } from '../mocks/mapMockData';
 import { getBalance, setBalance, useBalance } from '../state/localPassStore';
@@ -40,21 +38,9 @@ const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const { height } = Dimensions.get('window');
 
-const GENERATION_MARKER_STYLES = {
-  '20대': { markerSymbol: 'blue', markerTintColor: '#2F80ED' },
-  '30-40대': { markerSymbol: 'green', markerTintColor: MAIN_GREEN },
-  '50대+': { markerSymbol: 'yellow', markerTintColor: '#F28C28' },
-  전체: { markerSymbol: 'gray', markerTintColor: '#7B8179' },
-};
-
 const YUSEONG_CENTER = {
   latitude: 36.3504,
   longitude: 127.3845,
-};
-
-const KOREA_CENTER = {
-  latitude: 36.5,
-  longitude: 127.8,
 };
 
 const SIDO_COORDINATES = {
@@ -130,10 +116,6 @@ function normalizeAdoptedPlace(item, region) {
   const latitude = Number(item.latitude);
   const longitude = Number(item.longitude);
   const adoptionCount = Number(item.adoptionCount ?? item.likes ?? item.likeCount ?? 0);
-  const likeCount = Number(item.likeCount ?? item.likes ?? adoptionCount);
-  const commentCount = Number(item.commentCount ?? item.comments ?? 0);
-  const shareCount = Number(item.shareCount ?? item.shares ?? 0);
-  const generation = normalizeGenerationLabel(item.generation || item.ageTag || item.generationTag);
 
   return {
     id: String(postId ?? `${placeName}-${item.adoptedAt || Date.now()}`),
@@ -142,68 +124,37 @@ function normalizeAdoptedPlace(item, region) {
     title: placeName,
     name: placeName,
     category: item.category || item.categoryTag || '채택 명소',
-    content: item.content || '',
-    address: item.address || item.location || '',
-    regionCode: item.regionCode || region?.regionCode || region?.code || '',
-    generation,
-    passCount: item.passCount || `좋아요 ${likeCount} · 댓글 ${commentCount} · 공유 ${shareCount}`,
+    generation: item.generation || item.ageTag || item.generationTag || '전체',
+    passCount: item.passCount || `좋아요 ${adoptionCount}`,
     latitude: Number.isFinite(latitude) ? latitude : regionCenter.latitude,
     longitude: Number.isFinite(longitude) ? longitude : regionCenter.longitude,
     hasCoordinates: Number.isFinite(latitude) && Number.isFinite(longitude),
-    region: item.region || item.regionName || region?.fullName || '전국',
-    likes: likeCount,
-    comments: commentCount,
-    shares: shareCount,
-    engagementScore: likeCount + commentCount + shareCount,
-    adoptionCount,
+    region: item.region || item.regionName || region?.fullName || '선택한 지역',
+    likes: adoptionCount,
     adoptedAt: item.adoptedAt,
     imageUrl: item.imageUrl || item.imageUrls?.[0] || null,
   };
 }
 
-function normalizeGenerationLabel(value) {
-  if (value === 'TWENTIES' || value === '20대') {
-    return '20대';
-  }
-
-  if (value === 'THIRTIES_FORTIES' || value === '30·40대' || value === '30-40대') {
-    return '30-40대';
-  }
-
-  if (value === 'FIFTIES_PLUS' || value === '50대 이상' || value === '50대+') {
-    return '50대+';
-  }
-
-  return '전체';
+function getUserRegionCode(user) {
+  return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
 }
 
-function getGenerationMarkerStyle(generation) {
-  return GENERATION_MARKER_STYLES[generation] || GENERATION_MARKER_STYLES.전체;
-}
+function getResidentRegion(user) {
+  const regionCode = getUserRegionCode(user);
+  const sidoName = user?.sidoName || user?.region?.sidoName || '';
+  const sigunguName = user?.sigunguName || user?.region?.sigunguName || '';
 
-function getDistanceScore(center, place) {
-  if (!center || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const latitudeGap = center.latitude - place.latitude;
-  const longitudeGap = center.longitude - place.longitude;
-
-  return latitudeGap * latitudeGap + longitudeGap * longitudeGap;
-}
-
-function buildRegionFromSearchMatch(match) {
-  if (!match) {
+  if (!regionCode && (!sidoName || !sigunguName)) {
     return null;
   }
 
   return {
-    regionCode: match.regionCode,
-    sidoName: match.sidoName,
-    sigunguName: match.sigunguName,
-    fullName: match.fullName || `${match.sidoName} ${match.sigunguName}`,
-    centerLatitude: match.latitude,
-    centerLongitude: match.longitude,
+    ...(typeof user?.region === 'object' ? user.region : {}),
+    regionCode,
+    sidoName,
+    sigunguName,
+    fullName: user?.region?.fullName || [sidoName, sigunguName].filter(Boolean).join(' ') || regionCode,
   };
 }
 
@@ -291,9 +242,6 @@ function PlaceBottomSheet({
         <View style={styles.sheetTag}>
           <Text style={styles.sheetTagText}>{place?.generation}</Text>
         </View>
-        <View style={styles.sheetTag}>
-          <Text style={styles.sheetTagText}>채택 {place?.adoptionCount ?? place?.likes ?? 0}</Text>
-        </View>
       </View>
       {showAlternatives && (
         <View style={styles.similarList}>
@@ -349,41 +297,22 @@ export default function MapScreen() {
   const navigation = useNavigation();
   const sheetAnimation = useSharedValue(0);
   const mapRef = useRef(null);
-  const { regions } = useRegions();
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
   const [selectedPin, setSelectedPin] = useState(null);
-  const [selectedRegion, setSelectedRegion] = useState(null);
+  const [selectedRegion, setSelectedRegion] = useState(() => getResidentRegion(user));
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [regionRecommendations, setRegionRecommendations] = useState([]);
   const [regionCenterOverride, setRegionCenterOverride] = useState(null);
-  const [mapCenter, setMapCenter] = useState(KOREA_CENTER);
   const [relatedAttractions, setRelatedAttractions] = useState([]);
   const [isLoadingAttractions, setIsLoadingAttractions] = useState(false);
   const [attractionError, setAttractionError] = useState(null);
-  const [passModal, setPassModal] = useState({
-    visible: false,
-    tone: 'info',
-    title: '',
-    message: '',
-    place: null,
-    confirm: false,
-  });
   useBalance();
-  const naverMapClientId = getNaverMapClientId();
+  const { regions } = useRegions();
+  const userRegionCode = getUserRegionCode(user);
 
-  const rawSearchText = searchText.trim().toLowerCase();
-  const selectedRegionSearchText = (
-    selectedRegion?.fullName ||
-    `${selectedRegion?.sidoName || ''} ${selectedRegion?.sigunguName || ''}`
-  ).trim().toLowerCase();
-  const normalizedSearchText =
-    rawSearchText && rawSearchText === selectedRegionSearchText ? '' : rawSearchText;
+  const normalizedSearchText = searchText.trim().toLowerCase();
   const selectedRegionCenter = useMemo(() => {
-    if (!selectedRegion) {
-      return KOREA_CENTER;
-    }
-
     const firstPlace = regionRecommendations[0];
 
     if (firstPlace?.hasCoordinates) {
@@ -397,10 +326,6 @@ export default function MapScreen() {
   }, [regionCenterOverride, regionRecommendations, selectedRegion]);
 
   const selectedMapZoom = useMemo(() => {
-    if (!selectedRegion) {
-      return 6;
-    }
-
     if (regionRecommendations.some((place) => place.hasCoordinates)) {
       return 14;
     }
@@ -414,8 +339,7 @@ export default function MapScreen() {
 
   const filteredRecommendations = useMemo(
     () =>
-      regionRecommendations
-        .filter((place) => {
+      regionRecommendations.filter((place) => {
         const matchesFilter =
           selectedFilter === '전체' || place.generation === selectedFilter;
         const matchesSearch =
@@ -424,39 +348,75 @@ export default function MapScreen() {
           place.category.toLowerCase().includes(normalizedSearchText);
 
         return matchesFilter && matchesSearch;
-      })
-        .sort((a, b) => (b.engagementScore ?? 0) - (a.engagementScore ?? 0))
-        .slice(0, 3),
-    [mapCenter, normalizedSearchText, regionRecommendations, selectedFilter],
+      }),
+    [normalizedSearchText, regionRecommendations, selectedFilter],
   );
 
   const filteredMarkers = useMemo(
     () =>
       regionRecommendations
-        .filter((place) => {
-          const matchesFilter =
-            selectedFilter === '전체' || place.generation === selectedFilter;
-          const matchesSearch =
-            !normalizedSearchText ||
-            place.title.toLowerCase().includes(normalizedSearchText) ||
-            place.category.toLowerCase().includes(normalizedSearchText);
-
-          return matchesFilter && matchesSearch;
-        })
         .map((place) => ({
           ...place,
-          ...getGenerationMarkerStyle(place.generation),
           id: place.id,
           latitude: place.latitude,
           longitude: place.longitude,
           title: place.title,
-          description: `${place.title} · 채택 ${place.adoptionCount ?? 0}`,
-        })),
-    [normalizedSearchText, regionRecommendations, selectedFilter],
+        }))
+        .filter((marker) => {
+        const matchesSearch =
+          !normalizedSearchText ||
+          marker.title.toLowerCase().includes(normalizedSearchText) ||
+          marker.category.toLowerCase().includes(normalizedSearchText);
+
+        return matchesSearch;
+      }),
+    [normalizedSearchText, regionRecommendations],
   );
 
   const hasSearchResults =
     filteredMarkers.length > 0 || filteredRecommendations.length > 0;
+
+  useEffect(() => {
+    const residentRegion = getResidentRegion(user);
+
+    if (!residentRegion) {
+      return;
+    }
+
+    const matchedRegion = regions.find((region) =>
+      residentRegion.regionCode
+        ? region.regionCode === residentRegion.regionCode
+        : region.sidoName === residentRegion.sidoName &&
+          region.sigunguName === residentRegion.sigunguName,
+    );
+
+    if (matchedRegion) {
+      setSelectedRegion(matchedRegion);
+      return;
+    }
+
+    if (residentRegion.regionCode) {
+      setSelectedRegion((current) => current?.regionCode === residentRegion.regionCode
+        ? current
+        : residentRegion);
+      return;
+    }
+
+    let isMounted = true;
+    void searchRegionByName(residentRegion.sidoName, residentRegion.sigunguName)
+      .then((region) => {
+        if (isMounted) {
+          setSelectedRegion(region);
+        }
+      })
+      .catch((error) => {
+        console.warn('거주지 지역코드 조회 실패:', error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [regions, user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -501,10 +461,14 @@ export default function MapScreen() {
     async function loadRegionRecommendations() {
       const regionCode = selectedRegion?.regionCode;
 
+      if (!regionCode) {
+        setRegionRecommendations([]);
+        return;
+      }
+
       try {
         const data = await apiClient.get('/api/places/adopted', {
-          params: regionCode ? { regionCode } : undefined,
-          skipAuth: true,
+          params: { regionCode },
         });
         const nextRecommendations = Array.isArray(data)
           ? data.map((item) => normalizeAdoptedPlace(item, selectedRegion))
@@ -525,7 +489,7 @@ export default function MapScreen() {
     return () => {
       isMounted = false;
     };
-  }, [selectedRegion]);
+  }, [selectedRegion?.regionCode]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -539,38 +503,18 @@ export default function MapScreen() {
         zoom: selectedMapZoom,
         duration: 500,
       });
-      setMapCenter(selectedRegionCenter);
     }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [selectedMapZoom, selectedRegionCenter]);
 
   const handleSelectRegion = (region) => {
-    setSelectedRegion(region);
-    setSearchText(region?.fullName || `${region?.sidoName || ''} ${region?.sigunguName || ''}`.trim());
-    setMapCenter(resolveRegionCenter(region));
-    setRegionRecommendations([]);
-    setRegionCenterOverride(null);
-    setSelectedPin(null);
-    setShowAlternatives(false);
-    setRelatedAttractions([]);
-    setAttractionError(null);
-  };
-
-  const handleSearchTextChange = (value) => {
-    setSearchText(value);
-
-    const matchedRegion = buildRegionFromSearchMatch(
-      findRegionSearchMatch(value, regions),
-    );
-
-    if (!matchedRegion || matchedRegion.regionCode === selectedRegion?.regionCode) {
+    if (userRegionCode && region?.regionCode !== userRegionCode) {
+      Alert.alert('내 지역만 볼 수 있어요', '지도에는 거주자 인증을 완료한 내 지역의 채택 명소만 표시돼요.');
       return;
     }
 
-    setSearchText(matchedRegion.fullName);
-    setSelectedRegion(matchedRegion);
-    setMapCenter(resolveRegionCenter(matchedRegion));
+    setSelectedRegion(region);
     setRegionRecommendations([]);
     setRegionCenterOverride(null);
     setSelectedPin(null);
@@ -674,127 +618,72 @@ export default function MapScreen() {
     });
   };
 
-  const navigateToPlaceDetail = (place) => {
-    const selectedPlaceName = place?.title || place?.name || '선택한 장소';
-
-    setSelectedPin(null);
-    navigation.navigate('PostDetail', {
-      post: {
-        id: place?.postId ?? place?.id,
-        author: place?.region || '지역 거주자',
-        isResident: true,
-        time: place?.adoptedAt || '최근',
-        image: place?.imageUrl || null,
-        imageUrl: place?.imageUrl || null,
-        ageTag: place?.generation || '전체',
-        generationTag: place?.generation || '전체',
-        categoryTag: place?.category || '명소',
-        title: selectedPlaceName,
-        content:
-          place?.content ||
-          `${place?.address ? `${place.address}\n\n` : ''}로컬 거주자가 추천한 채택 명소예요.`,
-        progress: 100,
-        likes: place?.likes || 0,
-        comments: place?.comments || 0,
-        shares: place?.shares || 0,
-        location: place?.address || place?.region || '위치 정보 없음',
-        regionCode: place?.regionCode,
-        regionName: place?.region,
-      },
-    });
-  };
-
-  const usePassAndOpenPlace = async (place) => {
-    try {
-      const data = await apiClient.post('/api/localpass/use', {
-        placeId: Number(place?.postId ?? place?.id),
-      });
-      if (Number.isFinite(Number(data?.balance))) {
-        setBalance(Number(data.balance));
-      }
-      setPassModal((current) => ({ ...current, visible: false, place: null }));
-      navigateToPlaceDetail(place);
-    } catch (error) {
-      setPassModal({
-        visible: true,
-        tone: error?.code === 'L001' ? 'warning' : 'error',
-        title: error?.code === 'L001' ? '로컬패스가 부족합니다' : '열람 실패',
-        message: error?.message || '명소 정보를 열람하지 못했어요.',
-        place: null,
-        confirm: false,
-      });
-    }
-  };
-
-  const handleUsePass = async () => {
+  const handleUsePass = () => {
     if (isGuest) {
-      setPassModal({
-        visible: true,
-        tone: 'warning',
-        title: '로그인이 필요해요',
-        message: '로컬패스는 로그인 후 이용할 수 있어요.',
-        place: null,
-        confirm: true,
-      });
+      Alert.alert(
+        '로그인이 필요해요',
+        '로컬패스는 로그인 후 이용할 수 있어요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '로그인하기', onPress: exitGuestMode },
+        ],
+      );
+      return;
+    }
+
+    if (getBalance() <= 0) {
+      Alert.alert(
+        '로컬패스 부족',
+        '로컬패스가 없어요. 소통방에서 활동하면 획득할 수 있어요!'
+      );
       return;
     }
 
     const selectedMarker = selectedPin;
 
     if (!selectedMarker) {
-      setPassModal({
-        visible: true,
-        tone: 'info',
-        title: '명소를 선택해주세요',
-        message: '지도에서 명소를 먼저 선택해주세요.',
-        place: null,
-        confirm: false,
-      });
+      Alert.alert(
+        '명소를 선택해주세요',
+        '지도에서 명소를 먼저 선택해주세요.',
+      );
       return;
     }
 
     const selectedPlaceName = selectedMarker?.title || selectedMarker?.name || '선택한 장소';
-    const userRegionCode = user?.region?.regionCode || user?.region?.code;
-    const isOwnRegion = userRegionCode && selectedMarker?.regionCode === userRegionCode;
 
-    if (isOwnRegion) {
-      await usePassAndOpenPlace(selectedMarker);
-      return;
-    }
-
-    try {
-      const viewedData = await apiClient.get('/api/localpass/viewed', {
-        params: { placeId: Number(selectedMarker?.postId ?? selectedMarker?.id) },
-      });
-
-      if (viewedData?.viewed) {
-        navigateToPlaceDetail(selectedMarker);
-        return;
-      }
-    } catch {
-      // 조회 실패 시에도 사용 확인 단계에서 최종 검증한다.
-    }
-
-    if (getBalance() <= 0) {
-      setPassModal({
-        visible: true,
-        tone: 'warning',
-        title: '로컬패스가 부족합니다',
-        message: '소통방 활동이나 채택 보상으로 로컬패스를 획득한 뒤 다시 시도해주세요.',
-        place: null,
-        confirm: false,
-      });
-      return;
-    }
-
-    setPassModal({
-      visible: true,
-      tone: 'info',
-      title: '로컬패스 사용',
-      message: `로컬패스 1개를 사용하여\n${selectedPlaceName} 정보를 열람하시겠습니까?`,
-      place: selectedMarker,
-      confirm: true,
-    });
+    Alert.alert(
+      '로컬패스 사용',
+      `${selectedPlaceName} 상세 정보를 열람하기 위해\n로컬패스 1개를 사용해요.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '열람하기',
+          onPress: () => {
+            setBalance(getBalance() - 1);
+            setSelectedPin(null);
+            navigation.navigate('PostDetail', {
+              post: {
+                id: selectedMarker?.id,
+                author: selectedMarker?.region || '지역 거주자',
+                isResident: true,
+                time: '최근',
+                image: null,
+                ageTag: selectedMarker?.ageTag || '전체',
+                categoryTag: selectedMarker?.category || '명소',
+                title: selectedPlaceName,
+                content:
+                  selectedMarker?.description ||
+                  '로컬 거주자가 추천한 명소예요. 직접 방문해서 확인해보세요!',
+                progress: 83,
+                likes: selectedMarker?.likes || 24,
+                comments: 2,
+                location: selectedMarker?.region || '대전 유성구',
+              },
+            });
+          },
+        },
+      ],
+    );
   };
 
   const sheetAnimatedStyle = useAnimatedStyle(() => ({
@@ -828,7 +717,7 @@ export default function MapScreen() {
               <TextInput
                 style={styles.searchInput}
                 value={searchText}
-                onChangeText={handleSearchTextChange}
+                onChangeText={setSearchText}
                 placeholder="어디로 여행가세요?"
                 placeholderTextColor="#9B9F98"
               />
@@ -864,12 +753,10 @@ export default function MapScreen() {
         <View style={styles.mapArea}>
           <NaverMapView
             ref={mapRef}
-            clientId={naverMapClientId}
             latitude={selectedRegionCenter.latitude}
             longitude={selectedRegionCenter.longitude}
             zoom={selectedMapZoom}
             markers={filteredMarkers}
-            onCameraIdle={setMapCenter}
             onMarkerPress={handleSelectMarker}
             style={styles.naverMap}
           />
@@ -890,13 +777,7 @@ export default function MapScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.recommendationList}
           >
-            {!selectedRegion ? (
-              <View style={styles.emptyRecommendationCard}>
-                <Text style={styles.emptyRecommendationText}>
-                  지역을 선택하면 채택 명소를 볼 수 있어요
-                </Text>
-              </View>
-            ) : hasSearchResults ? (
+            {hasSearchResults ? (
               filteredRecommendations.map((place) => (
                 <RecommendationCard
                   key={place.id}
@@ -914,7 +795,6 @@ export default function MapScreen() {
             )}
           </ScrollView>
         </View>
-        <Text style={styles.sourceText}>출처: ⓒ한국관광공사</Text>
       </ScrollView>
 
       {selectedPin && (
@@ -930,28 +810,6 @@ export default function MapScreen() {
           onUsePass={handleUsePass}
         />
       )}
-      <LocalPickModal
-        visible={passModal.visible}
-        tone={passModal.tone}
-        title={passModal.title}
-        message={passModal.message}
-        primaryText={passModal.confirm ? '예' : '확인'}
-        secondaryText={passModal.confirm ? '아니오' : undefined}
-        onPrimaryPress={() => {
-          if (passModal.place) {
-            void usePassAndOpenPlace(passModal.place);
-            return;
-          }
-          if (passModal.title === '로그인이 필요해요') {
-            setPassModal((current) => ({ ...current, visible: false }));
-            exitGuestMode();
-            return;
-          }
-          setPassModal((current) => ({ ...current, visible: false }));
-        }}
-        onSecondaryPress={() => setPassModal((current) => ({ ...current, visible: false }))}
-        onRequestClose={() => setPassModal((current) => ({ ...current, visible: false }))}
-      />
     </SafeAreaView>
   );
 }
@@ -1077,14 +935,7 @@ const styles = StyleSheet.create({
   recommendationSection: {
     backgroundColor: BACKGROUND,
     paddingHorizontal: 20,
-    paddingBottom: 10,
-  },
-  sourceText: {
-    color: '#8A9089',
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
+    paddingBottom: 20,
   },
   sectionHeader: {
     alignItems: 'center',

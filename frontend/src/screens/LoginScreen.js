@@ -28,7 +28,7 @@ const isKakaoLoginEnabled = process.env.EXPO_PUBLIC_ENABLE_KAKAO_LOGIN === 'true
 export default function LoginScreen({ navigation: navigationProp }) {
   const fallbackNavigation = useNavigation();
   const navigation = navigationProp ?? fallbackNavigation;
-  const { devLogin, loginWithApple, loginWithKakao, startGuestMode } = useAuth();
+  const { loginWithApple, loginWithKakao, startGuestMode } = useAuth();
   const iconAnimation = useSharedValue(0);
   const copyAnimation = useSharedValue(0);
   const buttonAnimation = useSharedValue(0);
@@ -88,10 +88,6 @@ export default function LoginScreen({ navigation: navigationProp }) {
     }
 
     void handleLogin(loginWithKakao);
-  };
-
-  const handleDevLogin = () => {
-    void handleLogin(devLogin);
   };
 
   const handleStartGuestMode = () => {
@@ -170,16 +166,6 @@ export default function LoginScreen({ navigation: navigationProp }) {
           >
             <Text style={styles.guestButtonText}>로그인 없이 둘러보기</Text>
           </TouchableOpacity>
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.devButton}
-              activeOpacity={0.85}
-              disabled={isLoginLoading}
-              onPress={handleDevLogin}
-            >
-              <Text style={styles.devButtonText}>개발용으로 시작하기</Text>
-            </TouchableOpacity>
-          )}
           <View style={styles.termsRow}>
             <Text style={styles.termsText}>시작하면 </Text>
             <TouchableOpacity activeOpacity={0.7} onPress={handleOpenTerms}>
@@ -293,21 +279,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.7,
     textDecorationLine: 'underline',
-  },
-  devButton: {
-    alignItems: 'center',
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 16,
-    borderWidth: 1,
-    height: 50,
-    justifyContent: 'center',
-    marginHorizontal: 24,
-    marginTop: 10,
-  },
-  devButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
   },
   termsRow: {
     alignItems: 'center',

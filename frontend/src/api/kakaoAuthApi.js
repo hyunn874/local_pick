@@ -79,6 +79,8 @@ export async function signInWithKakao() {
     refreshToken: queryParams.refreshToken,
     // 쿼리스트링이라 모두 문자열로 들어온다.
     isNewUser: queryParams.isNewUser === 'true',
-    isOnboarded: queryParams.isOnboarded === 'true',
+    isOnboarded: queryParams.isOnboarded === undefined
+      ? undefined
+      : queryParams.isOnboarded === 'true',
   };
 }
