@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   ActivityIndicator,
@@ -27,6 +27,15 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 const GRAY = '#8A918A';
+const PICKER_ITEM_HEIGHT = 40;
+const PICKER_ITEM_INTERVAL = PICKER_ITEM_HEIGHT + 6;
+const PICKER_HEIGHT = 170;
+const PICKER_VERTICAL_PADDING = (PICKER_HEIGHT - PICKER_ITEM_INTERVAL) / 2;
+
+function pickerOffsetForIndex(index, itemCount) {
+  const maxOffset = Math.max(0, (itemCount - 1) * PICKER_ITEM_INTERVAL);
+  return Math.max(0, Math.min(index * PICKER_ITEM_INTERVAL, maxOffset));
+}
 
 function getVerifyCountLabel(verifyCount) {
   if (verifyCount <= 0) {
@@ -82,28 +91,151 @@ function getUserRegionCode(user) {
   return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
 }
 
-function RegionPickerColumn({ title, options, selectedValue, onSelect }) {
+function RegionPickerColumn({ title, options, selectedValue, onSelect, circular = false }) {
+  const listRef = useRef(null);
+  const isScrollingRef = useRef(false);
+  const scrollEndTimerRef = useRef(null);
+  const selectedIndexRef = useRef(options.indexOf(selectedValue));
+  const lastOffsetRef = useRef(0);
+  const shouldLoop = circular && options.length > 1;
+  const firstMiddleIndex = shouldLoop ? options.length : 0;
+  const renderedOptions = useMemo(
+    () => (shouldLoop ? [...options, ...options, ...options] : options),
+    [options, shouldLoop],
+  );
+  const [highlightedIndex, setHighlightedIndex] = useState(firstMiddleIndex + options.indexOf(selectedValue));
+  const snapOffsets = useMemo(
+    () => renderedOptions.map((_, index) => pickerOffsetForIndex(index, renderedOptions.length)),
+    [renderedOptions],
+  );
+
+  selectedIndexRef.current = options.indexOf(selectedValue);
+
+  const selectIndex = (index) => {
+    const optionIndex = options.length ? index % options.length : -1;
+    const option = options[optionIndex];
+
+    if (option !== undefined) {
+      setHighlightedIndex(firstMiddleIndex + optionIndex);
+    }
+
+    if (option !== undefined && optionIndex !== selectedIndexRef.current) {
+      selectedIndexRef.current = optionIndex;
+      onSelect(option);
+    }
+  };
+
+  const indexAtOffset = (offset) => {
+    if (renderedOptions.length === 0) {
+      return { rawIndex: -1, index: -1 };
+    }
+
+    const rawIndex = offset / PICKER_ITEM_INTERVAL;
+    const index = Math.max(0, Math.min(renderedOptions.length - 1, Math.round(rawIndex)));
+
+    return { rawIndex, index };
+  };
+
+  const settleScroll = (offset) => {
+    isScrollingRef.current = false;
+    const { rawIndex, index } = indexAtOffset(offset);
+
+    if (index >= 0) {
+      console.log('[피커] offset:', offset);
+      console.log('[피커] rawIndex:', rawIndex);
+      console.log('[피커] index:', index);
+      console.log('[피커] 선택:', renderedOptions[index]);
+      selectIndex(index);
+      const middleIndex = firstMiddleIndex + (index % options.length);
+      listRef.current?.scrollTo({ y: pickerOffsetForIndex(middleIndex, renderedOptions.length), animated: false });
+    }
+  };
+
+  useEffect(() => {
+    if (isScrollingRef.current) {
+      return;
+    }
+
+    const index = options.indexOf(selectedValue);
+    setHighlightedIndex(index < 0 ? -1 : firstMiddleIndex + index);
+    if (index >= 0) {
+      listRef.current?.scrollTo({ y: pickerOffsetForIndex(firstMiddleIndex + index, renderedOptions.length), animated: false });
+    }
+  }, [firstMiddleIndex, options, renderedOptions.length, selectedValue]);
+
+  useEffect(() => () => {
+    clearTimeout(scrollEndTimerRef.current);
+  }, []);
+
   return (
     <View style={styles.pickerColumn}>
       <Text style={styles.pickerColumnTitle}>{title}</Text>
-      <View style={styles.pickerSelectionGuide} pointerEvents="none" />
       <ScrollView
+        ref={listRef}
         style={styles.pickerScroll}
         contentContainerStyle={styles.pickerScrollContent}
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        snapToInterval={PICKER_ITEM_INTERVAL}
+        snapToOffsets={snapOffsets}
+        snapToAlignment="center"
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        onScrollBeginDrag={() => {
+          clearTimeout(scrollEndTimerRef.current);
+          isScrollingRef.current = true;
+        }}
+        onScroll={(event) => {
+          const offset = event.nativeEvent.contentOffset.y;
+          lastOffsetRef.current = offset;
+          if (isScrollingRef.current) {
+            setHighlightedIndex(indexAtOffset(offset).index);
+          }
+        }}
+        onScrollEndDrag={() => {
+          scrollEndTimerRef.current = setTimeout(() => settleScroll(lastOffsetRef.current), 100);
+        }}
+        onMomentumScrollBegin={() => clearTimeout(scrollEndTimerRef.current)}
+        onMomentumScrollEnd={(event) => {
+          clearTimeout(scrollEndTimerRef.current);
+          settleScroll(event.nativeEvent.contentOffset.y);
+        }}
       >
-        {options.map((option) => {
-          const isSelected = option === selectedValue;
+        {renderedOptions.map((item, index) => {
+          const isSelected = index === highlightedIndex;
 
           return (
             <TouchableOpacity
-              key={option}
-              style={[styles.pickerOption, isSelected && styles.selectedPickerOption]}
+              key={`${index}-${item}`}
+              style={[
+                styles.pickerOption,
+                isSelected ? styles.selectedPickerOption : styles.unselectedPickerOption,
+              ]}
               activeOpacity={0.7}
-              onPress={() => onSelect(option)}
+              hitSlop={{ top: 3, bottom: 3, left: 20, right: 20 }}
+              onPress={() => {
+                const middleIndex = firstMiddleIndex + (index % options.length);
+                const targetOffset = pickerOffsetForIndex(middleIndex, renderedOptions.length);
+                console.log('[피커] offset:', targetOffset);
+                console.log('[피커] rawIndex:', index);
+                console.log('[피커] index:', index);
+                console.log('[피커] 선택:', item);
+                clearTimeout(scrollEndTimerRef.current);
+                isScrollingRef.current = false;
+                selectIndex(index);
+                listRef.current?.scrollTo({ y: targetOffset, animated: false });
+              }}
             >
-              <Text style={[styles.pickerOptionText, isSelected && styles.selectedPickerOptionText]}>
-                {option}
+              <Text
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                style={[
+                  styles.pickerOptionText,
+                  item.length > 6 ? styles.longPickerOptionText : styles.shortPickerOptionText,
+                  isSelected && styles.selectedPickerOptionText,
+                ]}
+              >
+                {item}
               </Text>
             </TouchableOpacity>
           );
@@ -192,10 +324,12 @@ export default function ResidentVerificationScreen({ navigation }) {
     }
 
     if (!sigunguOptions.includes(selectedSigungu)) {
-      const currentSigungu = user?.region?.sigunguName || '';
+      const currentSigungu = user?.region?.sidoName === selectedSido
+        ? user?.region?.sigunguName
+        : '';
       setSelectedSigungu(sigunguOptions.includes(currentSigungu) ? currentSigungu : sigunguOptions[0]);
     }
-  }, [selectedSigungu, sigunguOptions, user?.region?.sigunguName]);
+  }, [sigunguOptions, selectedSigungu, selectedSido, user?.region?.sidoName, user?.region?.sigunguName]);
 
   const loadResidentStatus = useCallback(async () => {
     setIsLoadingStatus(true);
@@ -480,7 +614,7 @@ export default function ResidentVerificationScreen({ navigation }) {
           {step === 1 ? (
             <View style={styles.panel}>
               <Text style={styles.title}>거주 지역을 선택해주세요</Text>
-              <Text style={styles.subtitle}>광역 시·도와 기초 시·군을 선택하면 인증 지역으로 저장돼요</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>시·도와 시·군·구를 선택해주세요</Text>
               {isLoadingRegions ? (
                 <View style={styles.regionLoadingBox}>
                   <ActivityIndicator color={MAIN_GREEN} />
@@ -500,10 +634,14 @@ export default function ResidentVerificationScreen({ navigation }) {
                       title="광역 시·도"
                       options={sidoOptions}
                       selectedValue={selectedSido}
-                      onSelect={setSelectedSido}
+                      circular
+                      onSelect={(sido) => {
+                        setSelectedSido(sido);
+                        setSelectedSigungu('');
+                      }}
                     />
                     <RegionPickerColumn
-                      title="기초 시·군"
+                      title="시·군·구"
                       options={sigunguOptions}
                       selectedValue={selectedSigungu}
                       onSelect={setSelectedSigungu}
@@ -531,9 +669,7 @@ export default function ResidentVerificationScreen({ navigation }) {
           ) : (
             <View style={styles.panel}>
               <Text style={styles.title}>GPS로 위치를 확인해요</Text>
-              <Text style={styles.subtitle}>
-                거주자 인증을 위해 현재 위치를 행정구역으로 변환해요
-              </Text>
+              <Text style={styles.subtitle} numberOfLines={1}>현재 위치로 거주 지역을 확인해요</Text>
               <View style={styles.progressBox}>
                 <Text style={styles.progressLabel}>현재 진행</Text>
                 <Text style={styles.progressValue}>
@@ -770,9 +906,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
     marginTop: 22,
-    padding: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   pickerColumn: {
     flex: 1,
@@ -786,44 +923,47 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pickerScroll: {
-    maxHeight: 170,
+    maxHeight: PICKER_HEIGHT,
   },
   pickerScrollContent: {
-    gap: 6,
-    paddingVertical: 52,
-  },
-  pickerSelectionGuide: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: BORDER,
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 42,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 82,
+    paddingTop: PICKER_VERTICAL_PADDING,
+    paddingBottom: PICKER_VERTICAL_PADDING,
   },
   pickerOption: {
     alignItems: 'center',
-    borderRadius: 8,
-    minHeight: 40,
+    alignSelf: 'center',
+    height: PICKER_ITEM_HEIGHT,
     justifyContent: 'center',
-    paddingHorizontal: 5,
+    marginVertical: 3,
+    maxWidth: '100%',
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   selectedPickerOption: {
     backgroundColor: CARD,
     borderColor: MAIN_GREEN,
-    borderWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  unselectedPickerOption: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    opacity: 0.4,
   },
   pickerOptionText: {
     color: TEXT_SECONDARY,
-    fontSize: 12,
+    flexShrink: 1,
     fontWeight: '800',
     textAlign: 'center',
   },
+  longPickerOptionText: {
+    fontSize: 13,
+  },
+  shortPickerOptionText: {
+    fontSize: 15,
+  },
   selectedPickerOptionText: {
-    color: TEXT_PRIMARY,
+    color: MAIN_GREEN,
     fontWeight: '900',
   },
   selectedRegionBox: {
