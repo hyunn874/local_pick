@@ -21,7 +21,7 @@ import Animated, {
 
 import apiClient from '../api/apiClient';
 import { fetchNearbyAttractions } from '../api/attractionApi';
-import { fetchRegionByCode } from '../api/regionApi';
+import { fetchRegionByCode, searchRegionByName } from '../api/regionApi';
 import NaverMapView from '../components/NaverMapView';
 import RegionSelector from '../components/RegionSelector';
 import { useAuth } from '../contexts/AuthContext';
@@ -138,6 +138,24 @@ function normalizeAdoptedPlace(item, region) {
 
 function getUserRegionCode(user) {
   return user?.regionCode || user?.region?.regionCode || user?.region?.code || '';
+}
+
+function getResidentRegion(user) {
+  const regionCode = getUserRegionCode(user);
+  const sidoName = user?.sidoName || user?.region?.sidoName || '';
+  const sigunguName = user?.sigunguName || user?.region?.sigunguName || '';
+
+  if (!regionCode && (!sidoName || !sigunguName)) {
+    return null;
+  }
+
+  return {
+    ...(typeof user?.region === 'object' ? user.region : {}),
+    regionCode,
+    sidoName,
+    sigunguName,
+    fullName: user?.region?.fullName || [sidoName, sigunguName].filter(Boolean).join(' ') || regionCode,
+  };
 }
 
 function GenerationFilter({ label, selectedFilter, onPress }) {
@@ -282,7 +300,7 @@ export default function MapScreen() {
   const [selectedFilter, setSelectedFilter] = useState('전체');
   const [searchText, setSearchText] = useState('');
   const [selectedPin, setSelectedPin] = useState(null);
-  const [selectedRegion, setSelectedRegion] = useState(null);
+  const [selectedRegion, setSelectedRegion] = useState(() => getResidentRegion(user));
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [regionRecommendations, setRegionRecommendations] = useState([]);
   const [regionCenterOverride, setRegionCenterOverride] = useState(null);
@@ -359,16 +377,46 @@ export default function MapScreen() {
     filteredMarkers.length > 0 || filteredRecommendations.length > 0;
 
   useEffect(() => {
-    if (selectedRegion || regions.length === 0) {
+    const residentRegion = getResidentRegion(user);
+
+    if (!residentRegion) {
       return;
     }
 
-    const userRegion = regions.find((region) => region.regionCode === userRegionCode);
+    const matchedRegion = regions.find((region) =>
+      residentRegion.regionCode
+        ? region.regionCode === residentRegion.regionCode
+        : region.sidoName === residentRegion.sidoName &&
+          region.sigunguName === residentRegion.sigunguName,
+    );
 
-    if (userRegion) {
-      setSelectedRegion(userRegion);
+    if (matchedRegion) {
+      setSelectedRegion(matchedRegion);
+      return;
     }
-  }, [regions, selectedRegion, userRegionCode]);
+
+    if (residentRegion.regionCode) {
+      setSelectedRegion((current) => current?.regionCode === residentRegion.regionCode
+        ? current
+        : residentRegion);
+      return;
+    }
+
+    let isMounted = true;
+    void searchRegionByName(residentRegion.sidoName, residentRegion.sigunguName)
+      .then((region) => {
+        if (isMounted) {
+          setSelectedRegion(region);
+        }
+      })
+      .catch((error) => {
+        console.warn('거주지 지역코드 조회 실패:', error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [regions, user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -441,7 +489,7 @@ export default function MapScreen() {
     return () => {
       isMounted = false;
     };
-  }, [selectedRegion]);
+  }, [selectedRegion?.regionCode]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
