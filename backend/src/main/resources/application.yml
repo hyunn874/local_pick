@@ -47,6 +47,7 @@ localpick:
   naver:
     maps:
       reverse-geocoding-url: https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc
+      geocoding-url: https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode
       key-id: ${NAVER_MAP_KEY_ID:${NAVER_MAP_CLIENT_ID:}}
       secret: ${NAVER_MAP_CLIENT_SECRET:}
     callback-url: ${KAKAO_CALLBACK_URL:https://localpick-api.fly.dev/api/auth/kakao/callback}

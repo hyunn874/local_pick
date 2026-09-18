@@ -9,8 +9,8 @@
 #   KAKAO_REST_API_KEY  : 카카오 REST API 키 (카카오 콘솔 > 앱 키)
 #   KAKAO_CLIENT_SECRET : 카카오 클라이언트 시크릿 (콘솔에서 "사용함" 설정 시 필수)
 #   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.onrender.com/api/auth/kakao/callback)
-#   NAVER_MAP_KEY_ID    : 네이버 지도 Reverse Geocoding API Key ID
-#   NAVER_MAP_CLIENT_SECRET : 네이버 지도 Reverse Geocoding API Secret
+#   NAVER_MAP_CLIENT_ID     : 네이버 지도 Geocoding / Reverse Geocoding API Key ID
+#   NAVER_MAP_CLIENT_SECRET : 네이버 지도 Geocoding / Reverse Geocoding API Secret
 #   KAKAO_CALLBACK_URL  : 카카오 인가코드 콜백 URI (기본값: https://localpick-api.fly.dev/api/auth/kakao/callback)
 spring:
   main:
