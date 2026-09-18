@@ -1,7 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import apiClient from '../api/apiClient';
+import { fetchWeeklyTopPredictions } from '../api/predictionApi';
+import { useAuth } from '../contexts/AuthContext';
 
 const BACKGROUND = '#F8F6F1';
 const CARD = '#FFFFFF';
@@ -12,37 +16,14 @@ const TEXT_PRIMARY = '#17251D';
 const TEXT_SECONDARY = '#747B72';
 const BORDER = '#E5DED4';
 
-const initialNotifications = [
-  {
-    id: 1,
-    type: 'adopt',
-    title: '내 명소가 채택됐어요! 🎉',
-    body: '봉명동 숨은 골목 카페가 채택됐어요. 로컬패스 5개가 지급됐어요.',
-    time: '방금 전',
-    isRead: false,
-  },
-  {
-    id: 2,
-    type: 'verify',
-    title: '거주자 인증 기간이에요',
-    body: '이번 달 거주자 인증을 완료해주세요. 배지가 비활성화될 수 있어요.',
-    time: '1시간 전',
-    isRead: false,
-  },
-  {
-    id: 3,
-    type: 'hot',
-    title: '내 동네가 이번 주 핫로컬에 선정됐어요!',
-    body: '대전 유성구가 이번 주 핫로컬 TOP3에 선정됐어요.',
-    time: '어제',
-    isRead: true,
-  },
-];
-
 const notificationIcons = {
   adopt: {
     color: MAIN_GREEN,
     name: 'trophy-outline',
+  },
+  pass: {
+    color: MAIN_GREEN,
+    name: 'ticket-outline',
   },
   verify: {
     color: ORANGE,
@@ -53,6 +34,81 @@ const notificationIcons = {
     name: 'flame-outline',
   },
 };
+
+function getUserRegionName(user) {
+  if (typeof user?.region === 'string') {
+    return user.region;
+  }
+
+  return user?.region?.fullName || user?.district || '내 지역';
+}
+
+function hasResidentAccess(user) {
+  return Boolean(user?.isResidentVerified || user?.residentAccess || Number(user?.verifyCount ?? 0) > 0);
+}
+
+function formatRelativeTime(value) {
+  if (!value) {
+    return '최근';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '최근';
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (minutes < 1) return '방금 전';
+  if (minutes < 60) return `${minutes}분 전`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}일 전`;
+
+  return `${date.getMonth() + 1}.${date.getDate()}`;
+}
+
+function normalizeAdoptedPlace(place) {
+  const likes = Number(place.likeCount ?? place.likes ?? place.adoptionCount ?? 0);
+  const comments = Number(place.commentCount ?? place.comments ?? 0);
+  const shares = Number(place.shareCount ?? place.shares ?? 0);
+
+  return {
+    id: place.postId ?? place.id,
+    name: place.placeName || place.title || '채택 명소',
+    regionName: place.regionName || '전국',
+    score: likes + comments + shares,
+    adoptedAt: place.adoptedAt,
+  };
+}
+
+function normalizeHistoryItem(item) {
+  const amount = Number(item.amount ?? 0);
+  return {
+    id: item.id ?? `${item.reason}-${item.referenceId || item.createdAt}`,
+    amount,
+    reason: item.reason,
+    reasonLabel: item.reasonLabel || '로컬패스',
+    createdAt: item.createdAt,
+  };
+}
+
+function navigateFromNotification(navigation, target) {
+  if (!target) {
+    return;
+  }
+
+  if (['ResidentVerification', 'PassHistory', 'AllRecommend', 'AdoptedPlaces'].includes(target)) {
+    navigation.navigate(target);
+    return;
+  }
+
+  navigation.navigate('AuthGate', { screen: target });
+}
 
 function NotificationCard({ item, onPress }) {
   const icon = notificationIcons[item.type] || notificationIcons.hot;
@@ -95,16 +151,127 @@ function NotificationCard({ item, onPress }) {
 }
 
 export default function NotificationScreen({ navigation }) {
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const { accessToken, isGuest, user } = useAuth();
+  const [notifications, setNotifications] = useState([]);
+  const [readIds, setReadIds] = useState(new Set());
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handlePressNotification = (notificationId) => {
-    setNotifications((currentNotifications) =>
-      currentNotifications.map((notification) =>
-        notification.id === notificationId
-          ? { ...notification, isRead: true }
-          : notification,
-      ),
-    );
+  const userRegionName = useMemo(() => getUserRegionName(user), [user]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNotifications() {
+      setIsLoading(true);
+
+      try {
+        const [weeklyRegions, adoptedPlaces, historyItems] = await Promise.all([
+          fetchWeeklyTopPredictions().catch(() => []),
+          apiClient.get('/api/places/adopted', { skipAuth: true }).catch(() => []),
+          accessToken && !isGuest
+            ? apiClient.get('/api/local-pass/history').catch(() => [])
+            : Promise.resolve([]),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextNotifications = [];
+        const normalizedPlaces = Array.isArray(adoptedPlaces)
+          ? adoptedPlaces.map(normalizeAdoptedPlace)
+          : [];
+        const topPlace = normalizedPlaces
+          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0];
+
+        if (topPlace) {
+          nextNotifications.push({
+            id: `adopt-${topPlace.id}`,
+            type: 'adopt',
+            title: '새 채택 명소가 업데이트됐어요',
+            body: `${topPlace.regionName}의 ${topPlace.name}이 주민 반응을 모아 채택 명소로 등록됐어요.`,
+            time: formatRelativeTime(topPlace.adoptedAt),
+            isRead: false,
+            target: 'AllRecommend',
+          });
+        }
+
+        const normalizedHistory = Array.isArray(historyItems)
+          ? historyItems.map(normalizeHistoryItem)
+          : [];
+        const latestPassHistory = normalizedHistory[0];
+
+        if (latestPassHistory) {
+          const used = latestPassHistory.amount < 0;
+          nextNotifications.push({
+            id: `pass-${latestPassHistory.id}`,
+            type: 'pass',
+            title: used ? '로컬패스를 사용했어요' : '로컬패스가 지급됐어요',
+            body: used
+              ? `${Math.abs(latestPassHistory.amount)}개를 사용해 타지역 채택 명소를 열람했어요.`
+              : `${latestPassHistory.reasonLabel} 보상으로 ${latestPassHistory.amount}개가 지급됐어요.`,
+            time: formatRelativeTime(latestPassHistory.createdAt),
+            isRead: false,
+            target: 'PassHistory',
+          });
+        }
+
+        const topWeeklyRegion = Array.isArray(weeklyRegions) ? weeklyRegions[0] : null;
+        if (topWeeklyRegion) {
+          nextNotifications.push({
+            id: `hot-${topWeeklyRegion.regionCode || topWeeklyRegion.regionName}`,
+            type: 'hot',
+            title: '이번 주 발굴 지역 TOP3가 공개됐어요',
+            body: `${topWeeklyRegion.regionName}이 이번 주 발굴 지역 ${topWeeklyRegion.rank || 1}위로 선정됐어요.`,
+            time: '오늘',
+            isRead: true,
+            target: 'HotLocalScreen',
+          });
+        }
+
+        if (!isGuest && user && !hasResidentAccess(user)) {
+          nextNotifications.unshift({
+            id: 'verify-required',
+            type: 'verify',
+            title: '거주자 인증을 완료해주세요',
+            body: `${userRegionName} 소통방 참여와 내 지역 무료 열람을 위해 거주자 인증이 필요해요.`,
+            time: '오늘',
+            isRead: false,
+            target: 'ResidentVerification',
+          });
+        } else if (!isGuest && user?.verifyCount === 1 && user?.badgeStatus !== 'active') {
+          nextNotifications.unshift({
+            id: 'verify-second',
+            type: 'verify',
+            title: '2차 거주자 인증이 필요해요',
+            body: '배지 활성화를 위해 같은 지역에서 2차 인증을 완료해주세요.',
+            time: '오늘',
+            isRead: false,
+            target: 'ResidentVerification',
+          });
+        }
+
+        setNotifications(nextNotifications);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isGuest, user, userRegionName]);
+
+  const handlePressNotification = (notification) => {
+    setReadIds((currentReadIds) => new Set([...currentReadIds, notification.id]));
+
+    if (notification.target) {
+      navigateFromNotification(navigation, notification.target);
+    }
   };
 
   return (
@@ -122,26 +289,35 @@ export default function NotificationScreen({ navigation }) {
         <Text style={styles.headerTitle}>알림</Text>
         <View style={styles.headerSpacer} />
       </View>
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={[
-          styles.listContent,
-          notifications.length === 0 && styles.emptyListContent,
-        ]}
-        renderItem={({ item }) => (
-          <NotificationCard
-            item={item}
-            onPress={() => handlePressNotification(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🔔</Text>
-            <Text style={styles.emptyText}>아직 알림이 없어요</Text>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator color={MAIN_GREEN} />
+        </View>
+      ) : (
+        <FlatList
+          data={notifications.map((notification) => ({
+            ...notification,
+            isRead: notification.isRead || readIds.has(notification.id),
+          }))}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={[
+            styles.listContent,
+            notifications.length === 0 && styles.emptyListContent,
+          ]}
+          renderItem={({ item }) => (
+            <NotificationCard
+              item={item}
+              onPress={() => handlePressNotification(item)}
+            />
+          )}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>🔔</Text>
+              <Text style={styles.emptyText}>아직 알림이 없어요</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -172,6 +348,11 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 44,
+  },
+  loadingState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
   },
   listContent: {
     gap: 12,
