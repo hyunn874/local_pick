@@ -34,6 +34,18 @@ const DEV_USER = {
 
 const AuthContext = createContext(null);
 
+function hasCompletedOnboarding(authState) {
+  if (typeof authState.user?.onboarded === 'boolean') {
+    return authState.user.onboarded;
+  }
+
+  if (typeof authState.isOnboarded === 'boolean') {
+    return authState.isOnboarded;
+  }
+
+  return !(authState.isNewMember ?? authState.isNewUser);
+}
+
 async function readStoredAuth() {
   try {
     const value = await SecureStore.getItemAsync(AUTH_STORAGE_KEY);
@@ -98,7 +110,7 @@ export function AuthProvider({ children }) {
         setUser(storedAuth.user);
         setAccessToken(storedAuth.accessToken ?? null);
         setRefreshToken(storedAuth.refreshToken ?? null);
-        setIsOnboarded(Boolean(storedAuth.isOnboarded));
+        setIsOnboarded(hasCompletedOnboarding(storedAuth));
         syncTokenRefs(storedAuth.accessToken, storedAuth.refreshToken);
       }
 
@@ -120,7 +132,7 @@ export function AuthProvider({ children }) {
       provider: nextAuthState.provider ?? 'kakao',
       isNewMember,
       isNewUser: isNewMember,
-      isOnboarded: nextAuthState.isOnboarded ?? !isNewMember,
+      isOnboarded: hasCompletedOnboarding(nextAuthState),
       user: nextAuthState.user,
     };
 
@@ -267,6 +279,10 @@ export function AuthProvider({ children }) {
 
   const completeOnboarding = useCallback(
     async (nextOnboardingState, nextGenerationTag) => {
+      if (isOnboarded) {
+        return userRef.current;
+      }
+
       const nickname = typeof nextOnboardingState === 'object'
         ? nextOnboardingState.nickname
         : nextOnboardingState;
@@ -279,7 +295,30 @@ export function AuthProvider({ children }) {
         generationTag,
       };
 
-      const nextUser = await completeOnboardingApi(onboardingPayload);
+      let nextUser;
+      try {
+        nextUser = await completeOnboardingApi(onboardingPayload);
+      } catch (error) {
+        if (error?.code !== 'U003' && !error?.message?.includes('이미 설정을 완료한 계정')) {
+          throw error;
+        }
+
+        const onboardedUser = {
+          ...(userRef.current ?? storedAuth.user),
+          onboarded: true,
+        };
+        setUser(onboardedUser);
+        userRef.current = onboardedUser;
+        setIsOnboarded(true);
+        await writeStoredAuth({
+          ...storedAuth,
+          isNewMember: false,
+          isNewUser: false,
+          isOnboarded: true,
+          user: onboardedUser,
+        });
+        return onboardedUser;
+      }
       const nextAuthState = {
         accessToken: accessTokenRef.current,
         refreshToken: refreshTokenRef.current,
@@ -290,7 +329,7 @@ export function AuthProvider({ children }) {
 
       return applyAuth(nextAuthState);
     },
-    [applyAuth],
+    [applyAuth, isOnboarded],
   );
 
   const logout = useCallback(async () => {
