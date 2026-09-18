@@ -47,8 +47,13 @@ localpick:
   naver:
     maps:
       reverse-geocoding-url: https://maps.apigw.ntruss.com/map-reversegeocode/v2/gc
+      geocoding-url: https://maps.apigw.ntruss.com/map-geocode/v2/geocode
       key-id: ${NAVER_MAP_KEY_ID:${NAVER_MAP_CLIENT_ID:}}
       secret: ${NAVER_MAP_CLIENT_SECRET:}
+    local-search:
+      url: https://naverapihub.apigw.ntruss.com/search/v1/local
+      key-id: ${NAVER_LOCAL_SEARCH_CLIENT_ID:${NAVER_MAP_CLIENT_ID:${NAVER_MAP_KEY_ID:}}}
+      secret: ${NAVER_LOCAL_SEARCH_CLIENT_SECRET:${NAVER_MAP_CLIENT_SECRET:}}
     callback-url: ${KAKAO_CALLBACK_URL:https://localpick-api.fly.dev/api/auth/kakao/callback}
   app:
     # 콜백 처리 후 앱으로 되돌려보낼 딥링크
