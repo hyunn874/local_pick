@@ -49,6 +49,33 @@ const INITIAL_PLACE_FORM = {
   description: '',
 };
 
+function formatDateTime(value) {
+  if (!value) {
+    return '방금 전';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (minutes < 1) return '방금 전';
+  if (minutes < 60) return `${minutes}분 전`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+
+  return `${month}.${day} ${hour}:${minute}`;
+}
+
 function normalizeGenerationLabel(value) {
   if (value === 'TWENTIES' || value === '20대') {
     return '20대';
@@ -107,7 +134,7 @@ function normalizePost(post) {
     author: post.author?.nickname || post.authorNickname || post.authorName || post.author || '로컬픽 사용자',
     authorId: post.authorId,
     isResident: Boolean(post.isResident ?? post.writtenByResident ?? post.author?.isResidentVerified),
-    time: post.time || post.createdAt || '방금 전',
+    time: formatDateTime(post.time || post.createdAt),
     image: post.image || post.imageUrl || post.imageUrls?.[0],
     imageUrl: post.imageUrl || post.image || post.imageUrls?.[0],
     ageTag: ageGroup,
@@ -284,12 +311,25 @@ function MessageBubble({ item }) {
         <Text style={styles.messageAuthor}>{item.author}</Text>
         <Text style={styles.messageTime}>{item.time}</Text>
       </View>
+      {item.mediaUri && item.mediaType === 'image' && (
+        <Image
+          source={{ uri: item.mediaUri }}
+          style={styles.messageImage}
+          contentFit="cover"
+        />
+      )}
+      {item.mediaUri && item.mediaType === 'video' && (
+        <View style={styles.messageVideoPill}>
+          <Ionicons name="videocam-outline" size={16} color={MAIN_GREEN} />
+          <Text style={styles.messageVideoText}>동영상 첨부됨</Text>
+        </View>
+      )}
       <Text style={styles.messageText}>{item.text}</Text>
     </View>
   );
 }
 
-function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
+function PostCard({ post, onPress, onShare, onToggleLike }) {
   const imageSource = post.imageUrl || post.image;
   const generationTag = post.authorAgeGroup || post.generationTag || post.ageTag || '전체';
   const isLiked = post.likedByMe ?? post.isLiked;
@@ -342,7 +382,7 @@ function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
       </Text>
 
       <View style={styles.progressHeader}>
-        <Text style={styles.progressLabel}>채택까지</Text>
+        <Text style={styles.progressLabel}>{post.isAdopted ? '채택 완료' : '자동 채택까지'}</Text>
         <Text style={styles.progressPercent}>{post.progress}%</Text>
       </View>
       <View style={styles.progressTrack}>
@@ -356,12 +396,11 @@ function PostCard({ post, onPress, onShare, onToggleLike, onAdopt }) {
           </Text>
         </TouchableOpacity>
         <Text style={styles.actionText}>댓글 {post.comments}</Text>
+        <Text style={styles.actionText}>공유 {post.shares}</Text>
         <TouchableOpacity activeOpacity={0.7} onPress={onShare}>
           <Text style={styles.shareIcon}>↗</Text>
         </TouchableOpacity>
-        <TouchableOpacity activeOpacity={0.7} onPress={onAdopt}>
-          <Text style={styles.actionText}>{post.isAdopted ? '채택됨' : '채택하기'}</Text>
-        </TouchableOpacity>
+        {post.isAdopted && <Text style={styles.adoptedText}>채택됨</Text>}
       </View>
     </TouchableOpacity>
   );
@@ -379,7 +418,9 @@ export default function ChatRoomScreen() {
   const [message, setMessage] = useState('');
   const [placeImageUri, setPlaceImageUri] = useState(null);
   const [isPlaceFormVisible, setIsPlaceFormVisible] = useState(false);
+  const [isAttachMenuVisible, setIsAttachMenuVisible] = useState(false);
   const [placeForm, setPlaceForm] = useState(INITIAL_PLACE_FORM);
+  const [messageMedia, setMessageMedia] = useState(null);
   const [placeSuggestions, setPlaceSuggestions] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
@@ -393,6 +434,7 @@ export default function ChatRoomScreen() {
     visible: false,
     message: '',
   });
+  const [isAdoptionGuideVisible, setIsAdoptionGuideVisible] = useState(false);
   const userRegion = getUserRegion(user);
   const regionName = getResidenceName(user);
   const regionCode = getUserRegionCode(user);
@@ -661,43 +703,11 @@ export default function ChatRoomScreen() {
           };
         }),
       );
+      void loadPosts();
     } catch (error) {
       if (!currentPost) {
         return;
       }
-    }
-  };
-
-  const handleAdopt = async (post) => {
-    if (!isResidentVerified) {
-      showResidentRequiredModal('채택 투표는 거주자 인증 후 참여할 수 있어요.');
-      return;
-    }
-
-    if (!post?.id || post.isAdopted) {
-      return;
-    }
-
-    try {
-      const data = await apiClient.post(`/api/posts/${post.id}/adopt`);
-      setPosts((currentPosts) =>
-        currentPosts.map((currentPost) => {
-          if (currentPost.id !== post.id) {
-            return currentPost;
-          }
-
-          const nextAdoptionCount = Number(data?.adoptionCount ?? currentPost.adoptionCount + 1);
-
-          return {
-            ...currentPost,
-            adoptionCount: nextAdoptionCount,
-            isAdopted: Boolean(data?.adopted ?? data?.isAdopted ?? currentPost.isAdopted),
-          };
-        }),
-      );
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      Alert.alert('채택 투표 실패', '잠시 후 다시 시도해주세요.');
     }
   };
 
@@ -721,28 +731,60 @@ export default function ChatRoomScreen() {
     }
   };
 
+  const handlePickMessageMedia = async () => {
+    if (!isResidentVerified) {
+      navigation.navigate('ResidentVerification');
+      return;
+    }
+
+    setIsAttachMenuVisible(false);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert('권한 필요', '사진이나 동영상을 첨부하려면 사진 접근 권한이 필요해요.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      const asset = result.assets[0];
+      setMessageMedia({
+        uri: asset.uri,
+        type: asset.type === 'video' ? 'video' : 'image',
+      });
+    }
+  };
+
   const handleSend = async () => {
     if (!isResidentVerified) {
       showResidentRequiredModal('GPS 위치 확인을 완료하면 소통방에 글을 작성할 수 있어요.');
       return;
     }
 
-    if (isMessageEmpty) {
+    if (isMessageEmpty && !messageMedia) {
       Alert.alert('내용을 입력해주세요', '소통방에 남길 메시지를 입력해주세요.');
       return;
     }
 
     const inputText = message.trim();
     setChatMessages((currentMessages) => [
+      ...currentMessages,
       {
         id: `chat-${Date.now()}`,
-        author: user?.nickname || '나',
-        text: inputText,
+        author: user?.nickname || user?.name || '나',
+        text: inputText || (messageMedia?.type === 'video' ? '동영상을 공유했어요.' : '사진을 공유했어요.'),
         time: '방금 전',
+        mediaUri: messageMedia?.uri,
+        mediaType: messageMedia?.type,
       },
-      ...currentMessages,
     ]);
     setMessage('');
+    setMessageMedia(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -773,7 +815,17 @@ export default function ChatRoomScreen() {
       return;
     }
 
+    setIsAttachMenuVisible(false);
     setIsPlaceFormVisible(true);
+  };
+
+  const openAttachMenu = () => {
+    if (!isResidentVerified) {
+      navigation.navigate('ResidentVerification');
+      return;
+    }
+
+    setIsAttachMenuVisible(true);
   };
 
   const closePlaceForm = () => {
@@ -885,6 +937,17 @@ export default function ChatRoomScreen() {
                 {residentBadgeInfo.label}
               </Text>
             </TouchableOpacity>
+            <View style={styles.adoptionGuideRow}>
+              <Text style={styles.adoptionGuideText}>
+                채택 조건 충족 시 자동으로 채택 명소로 등록됩니다
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setIsAdoptionGuideVisible(true)}
+              >
+                <Text style={styles.adoptionGuideLink}>채택 조건</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconButton} activeOpacity={0.7} onPress={handleSearchPress}>
@@ -988,9 +1051,6 @@ export default function ChatRoomScreen() {
             </View>
           ) : (
             <>
-              {visibleChatMessages.map((chatMessage) => (
-                <MessageBubble key={chatMessage.id} item={chatMessage} />
-              ))}
               {visiblePosts.map((post) => (
                 <PostCard
                   key={post.id}
@@ -998,29 +1058,44 @@ export default function ChatRoomScreen() {
                   onPress={() => handlePostPress(post)}
                   onShare={() => handleShare(post)}
                   onToggleLike={() => handleToggleLike(post.id)}
-                  onAdopt={() => handleAdopt(post)}
                 />
+              ))}
+              {visibleChatMessages.map((chatMessage) => (
+                <MessageBubble key={chatMessage.id} item={chatMessage} />
               ))}
             </>
           )}
         </ScrollView>
 
         <View style={styles.composer}>
-          <TouchableOpacity
-            style={[styles.templateButton, !isResidentVerified && styles.disabledTemplateButton]}
-            activeOpacity={0.7}
-            onPress={openPlaceForm}
-          >
-            <Ionicons name="location-outline" size={17} color={isResidentVerified ? MAIN_GREEN : GRAY} />
-            <Text style={[styles.templateButtonText, !isResidentVerified && styles.disabledTemplateButtonText]}>
-              명소 등록 템플릿
-            </Text>
-          </TouchableOpacity>
+          {messageMedia && (
+            <View style={styles.messageMediaPreviewWrap}>
+              {messageMedia.type === 'image' ? (
+                <Image
+                  source={{ uri: messageMedia.uri }}
+                  style={styles.imagePreview}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.videoPreview}>
+                  <Ionicons name="videocam-outline" size={20} color={MAIN_GREEN} />
+                  <Text style={styles.videoPreviewText}>동영상</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                activeOpacity={0.7}
+                onPress={() => setMessageMedia(null)}
+              >
+                <Text style={styles.removeImageButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={styles.composerInputRow}>
             <TouchableOpacity
               style={[styles.attachButton, !isResidentVerified && styles.disabledAttachButton]}
               activeOpacity={0.7}
-              onPress={openPlaceForm}
+              onPress={openAttachMenu}
             >
               <Ionicons name="add-outline" size={25} color={isResidentVerified ? MAIN_GREEN : GRAY} />
             </TouchableOpacity>
@@ -1034,9 +1109,12 @@ export default function ChatRoomScreen() {
               placeholderTextColor="#9B9F98"
             />
             <TouchableOpacity
-              style={[styles.sendButton, isMessageEmpty && isResidentVerified && styles.disabledSendButton]}
+              style={[
+                styles.sendButton,
+                isMessageEmpty && !messageMedia && isResidentVerified && styles.disabledSendButton,
+              ]}
               activeOpacity={0.7}
-              disabled={isMessageEmpty && isResidentVerified}
+              disabled={isMessageEmpty && !messageMedia && isResidentVerified}
               onPress={handleSend}
             >
               <Text style={styles.sendButtonText}>↑</Text>
@@ -1205,6 +1283,47 @@ export default function ChatRoomScreen() {
             </KeyboardAvoidingView>
           </View>
         </Modal>
+        <Modal
+          visible={isAttachMenuVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setIsAttachMenuVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.attachMenuOverlay}
+            activeOpacity={1}
+            onPress={() => setIsAttachMenuVisible(false)}
+          >
+            <View style={styles.attachMenu}>
+              <TouchableOpacity
+                style={styles.attachMenuItem}
+                activeOpacity={0.7}
+                onPress={openPlaceForm}
+              >
+                <View style={styles.attachMenuIcon}>
+                  <Ionicons name="location-outline" size={22} color={MAIN_GREEN} />
+                </View>
+                <View style={styles.attachMenuTextWrap}>
+                  <Text style={styles.attachMenuTitle}>명소 등록하기</Text>
+                  <Text style={styles.attachMenuDescription}>채택 후보가 되는 장소를 템플릿으로 올려요</Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.attachMenuItem}
+                activeOpacity={0.7}
+                onPress={handlePickMessageMedia}
+              >
+                <View style={styles.attachMenuIcon}>
+                  <Ionicons name="images-outline" size={22} color={MAIN_GREEN} />
+                </View>
+                <View style={styles.attachMenuTextWrap}>
+                  <Text style={styles.attachMenuTitle}>사진/동영상</Text>
+                  <Text style={styles.attachMenuDescription}>기기 안의 사진이나 영상을 소통방에 공유해요</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         </SafeAreaView>
       </KeyboardAvoidingView>
       <LocalPickModal
@@ -1217,6 +1336,15 @@ export default function ChatRoomScreen() {
         onPrimaryPress={navigateToResidentVerification}
         onSecondaryPress={closeAuthModal}
         onRequestClose={closeAuthModal}
+      />
+      <LocalPickModal
+        visible={isAdoptionGuideVisible}
+        tone="info"
+        title="자동 채택 조건"
+        message="좋아요 30개, 댓글 10개, 공유 5회를 모두 충족하면 별도 투표 없이 자동으로 채택 명소에 등록돼요. 채택된 명소는 지도와 채택 명소 목록에서 바로 확인할 수 있어요."
+        primaryText="확인"
+        onPrimaryPress={() => setIsAdoptionGuideVisible(false)}
+        onRequestClose={() => setIsAdoptionGuideVisible(false)}
       />
     </>
   );
@@ -1268,6 +1396,25 @@ const styles = StyleSheet.create({
   headerResidentBadgeText: {
     fontSize: 12,
     fontWeight: '900',
+  },
+  adoptionGuideRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+    maxWidth: 280,
+  },
+  adoptionGuideText: {
+    color: '#9AA19A',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  adoptionGuideLink: {
+    color: MAIN_GREEN,
+    fontSize: 11,
+    fontWeight: '900',
+    textDecorationLine: 'underline',
   },
   activeHeaderResidentBadgeText: {
     color: MAIN_GREEN,
@@ -1396,6 +1543,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     lineHeight: 20,
+  },
+  messageImage: {
+    backgroundColor: '#DCEAE3',
+    borderRadius: 8,
+    height: 128,
+    marginBottom: 8,
+    width: 180,
+  },
+  messageVideoPill: {
+    alignItems: 'center',
+    backgroundColor: CARD,
+    borderRadius: 999,
+    flexDirection: 'row',
+    gap: 5,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  messageVideoText: {
+    color: MAIN_GREEN,
+    fontSize: 12,
+    fontWeight: '900',
   },
   postHeader: {
     alignItems: 'center',
@@ -1557,6 +1726,11 @@ const styles = StyleSheet.create({
   },
   likedText: {
     color: MAIN_GREEN,
+  },
+  adoptedText: {
+    color: MAIN_GREEN,
+    fontSize: 13,
+    fontWeight: '900',
   },
   shareIcon: {
     color: TEXT_SECONDARY,
@@ -1818,11 +1992,29 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     position: 'relative',
   },
+  messageMediaPreviewWrap: {
+    alignSelf: 'flex-start',
+    position: 'relative',
+  },
   imagePreview: {
     backgroundColor: '#E8F0EB',
     borderRadius: 8,
     height: 76,
     width: 102,
+  },
+  videoPreview: {
+    alignItems: 'center',
+    backgroundColor: '#E7EFE9',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 6,
+    height: 52,
+    paddingHorizontal: 12,
+  },
+  videoPreviewText: {
+    color: MAIN_GREEN,
+    fontSize: 13,
+    fontWeight: '900',
   },
   removeImageButton: {
     alignItems: 'center',
@@ -1851,6 +2043,48 @@ const styles = StyleSheet.create({
   },
   disabledAttachButton: {
     opacity: 0.45,
+  },
+  attachMenuOverlay: {
+    backgroundColor: 'rgba(23, 37, 29, 0.32)',
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: 20,
+  },
+  attachMenu: {
+    backgroundColor: CARD,
+    borderRadius: 18,
+    gap: 10,
+    padding: 14,
+  },
+  attachMenuItem: {
+    alignItems: 'center',
+    backgroundColor: BACKGROUND,
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  attachMenuIcon: {
+    alignItems: 'center',
+    backgroundColor: '#E7EFE9',
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  attachMenuTextWrap: {
+    flex: 1,
+  },
+  attachMenuTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  attachMenuDescription: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
   },
   input: {
     backgroundColor: BACKGROUND,

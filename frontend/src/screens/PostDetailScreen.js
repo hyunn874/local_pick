@@ -54,6 +54,33 @@ const INITIAL_COMMENTS = [
   },
 ];
 
+function formatDateTime(value) {
+  if (!value) {
+    return '방금 전';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (minutes < 1) return '방금 전';
+  if (minutes < 60) return `${minutes}분 전`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+
+  return `${month}.${day} ${hour}:${minute}`;
+}
+
 function createInitialComments(commentCount) {
   if (commentCount <= 0) {
     return [];
@@ -103,10 +130,10 @@ function calculateAdoptionProgress({
 function normalizeComment(comment) {
   return {
     id: comment.id ?? comment.commentId ?? Date.now(),
-    author: comment.author?.nickname || comment.authorName || comment.author || '로컬픽 사용자',
+    author: comment.author?.nickname || comment.authorNickname || comment.authorName || comment.author || '로컬픽 사용자',
     isResident: Boolean(comment.isResident ?? comment.author?.isResidentVerified),
     content: comment.content || '',
-    time: comment.time || comment.createdAt || '방금 전',
+    time: formatDateTime(comment.time || comment.createdAt),
     likes: Number(comment.likes ?? comment.likeCount ?? 0),
     isLiked: Boolean(comment.isLiked ?? comment.likedByMe),
   };
@@ -132,7 +159,7 @@ function normalizePost(post, fallback = {}) {
     id: source.id ?? source.postId,
     author: source.author?.nickname || source.authorNickname || source.authorName || source.author || '로컬픽 사용자',
     authorId: source.authorId,
-    time: source.time || source.createdAt || '방금 전',
+    time: formatDateTime(source.time || source.createdAt),
     image: source.image || source.imageUrl || source.imageUrls?.[0],
     imageUrl: source.imageUrl || source.image || source.imageUrls?.[0],
     ageTag: source.ageTag || source.generationTag || '전체',
@@ -301,6 +328,7 @@ export default function PostDetailScreen({ navigation, route }) {
       setLikeCount(nextLikes);
       setProgress(nextProgress);
       setPostLikeCount(post?.id, nextLikes, nextIsLiked);
+      void loadPost();
     } catch (error) {
     }
   };
@@ -337,10 +365,16 @@ export default function PostDetailScreen({ navigation, route }) {
       const data = await apiClient.post(`/api/posts/${post?.id}/comments`, {
         content: commentText.trim(),
       });
-      const nextComment = normalizeComment(data?.comment || data);
+      const normalizedComment = normalizeComment(data?.comment || data);
+      const nextComment = {
+        ...normalizedComment,
+        author: normalizedComment.author === '로컬픽 사용자'
+          ? user?.nickname || user?.name || '나'
+          : normalizedComment.author,
+      };
 
       setComments((currentComments) => {
-        const nextComments = [nextComment, ...currentComments];
+        const nextComments = [...currentComments, nextComment];
 
         setPostCommentCount(post?.id, nextComments.length);
         setProgress(calculateAdoptionProgress({
@@ -354,6 +388,7 @@ export default function PostDetailScreen({ navigation, route }) {
         return nextComments;
       });
       setCommentText('');
+      void loadPost();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       Alert.alert('댓글 등록 실패', '잠시 후 다시 시도해주세요.');
